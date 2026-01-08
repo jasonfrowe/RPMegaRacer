@@ -1,64 +1,59 @@
-# RP6502 VSCode Scaffolding for LLVM-MOS
+# RP Mega Racer
 
-This is scaffolding for a new Picocomputer 6502 software project.
+A top-down arcade racing game for the RP6502 PicoComputer, inspired by Atari's classic Sprint Racer series.
 
-### LLVM PATH notes
+## About
 
-LLVM-MOS must be in your PATH. However, this may conflict with other LLVM
-installations, like the one that comes with your operating system.
-In that case, you can adjust the path for only CMake with a VSCode setting.
-Add a file `.vscode/settings.json` with the following contents. Adjust the
-path for where you installed LLVM-MOS.
-```
-{
-    "cmake.environment": {
-        "PATH": "~/llvm-mos/bin:${env:PATH}"
-    }
-}
-```
+RP Mega Racer brings the excitement of vintage arcade racing to the RP6502 PicoComputer. Race against the clock on challenging tracks filled with obstacles, tight turns, and hairpin curves. Navigate your race car with precision using keyboard controls while enjoying authentic OPL2 synthesized sound effects and music.
 
-### Linux Tools Install:
- * [VSCode](https://code.visualstudio.com/). This has its own installer.
- * An install of [LLVM-MOS](https://llvm-mos.org/wiki/Welcome).
-   See PATH notes above.
- * The following tools installed from your package manager:
-    * `sudo apt install cmake python3 pip git build-essential`
-    * `pip install pyserial`
+## Features
 
-### Windows Tools Install:
- * [VSCode](https://code.visualstudio.com/). This has its own installer.
- * An install of [LLVM-MOS](https://llvm-mos.org/wiki/Welcome).
-   See PATH notes above.
- * Install python by typing `python3` which will launch the Microsoft Store
-   where you start the install. If python runs, this has already been done,
-   exit python with Ctrl-Z plus Return.
- * Install the python serial library with `pip install pyserial`.
- * `winget install -e --id Kitware.CMake`.
- * `winget install -e --id GnuWin32.Make`.
-    Add "C:\Program Files (x86)\GnuWin32\bin" to your path.
- * `winget install -e --id Git.Git`.
+- **Classic Top-Down Racing Action**: Experience the thrill of vintage arcade racing with smooth scrolling graphics
+- **Challenging Tracks**: Multiple race tracks with varying difficulty and layouts
+- **Realistic Physics**: Momentum-based driving that rewards skillful control
+- **OPL2 Audio**: Authentic retro sound effects and music powered by OPL2 synthesis
+- **Keyboard Controls**: Responsive steering and acceleration using standard keyboard input
+- **Score System**: Race against the clock and your best times
 
-### Getting Started:
-Go to the [GitHub template](https://github.com/picocomputer/vscode-llvm-mos)
-and select "Use this template" then "Create a new repository". GitHub will
-make a clean project for you to start with. Then you can download the
-repository and open the files.
+## Controls
 
-```
-$ git clone [path_to_github]
-$ cd [to_where_it_cloned]
-$ code .
+- **Arrow Keys**: Steer your vehicle left/right, accelerate/brake
+- **ESC**: Pause/Menu
+
+## Building the Game
+
+This project uses CMake and LLVM-MOS to build for the RP6502 PicoComputer.
+
+### Requirements
+
+- [LLVM-MOS](https://llvm-mos.org/wiki/Welcome) toolchain installed
+- CMake 3.18 or newer
+- Python 3 with pyserial for uploading to hardware
+- [RP6502 PicoComputer](https://picocomputer.github.io)
+
+### Build Instructions
+
+```bash
+mkdir -p build
+cd build
+cmake ..
+make
 ```
 
-Install the extensions and choose the default or obvious choice if VSCode
-prompts you. Choose "[Unspecified]" for the CMake kit.
+The compiled `.rp6502` file will be ready to upload to your PicoComputer.
 
-"Start Debugging" (F5) will build your project and upload it to the
-Picocomputer over a USB cable plugged into the Pico VGA. There is no debugger
-for the 6502; this process will exit immediately after the upload.
-If the default communications device doesn't work, edit ".rp6502" in the
-project root folder. This file will be created the first time you
-"Start Debugging" and will be ignored by git.
+### Running on Hardware
 
-Edit CMakeLists.txt to add new source and asset files. It's
-pretty normal C/ASM development from here on.
+Use F5 in VSCode to build and upload directly to your RP6502 PicoComputer connected via USB.
+
+## Development
+
+The game is written in C using the LLVM-MOS compiler targeting the 65C02 CPU. Graphics are rendered to the RP6502's canvas system, and audio is generated using the onboard OPL2 synthesizer.
+
+## Credits
+
+Inspired by Atari's Sprint series and classic top-down racing games of the 1970s-80s.
+
+## License
+
+See LICENSE file for details.
