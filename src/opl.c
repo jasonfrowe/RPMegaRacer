@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include "opl.h"
 #include "instruments.h"
+#include "constants.h"
 
 #include <errno.h>
 
@@ -44,12 +45,15 @@ uint16_t midi_to_opl_freq(uint8_t midi_note) {
 }
 
 void opl_write(uint8_t reg, uint8_t data) {
-    RIA.addr1 = OPL_ADDR; // OPL Write Index
+    #ifdef USE_NATIVE_OPL2
+    RIA.addr1 = OPL_ADDR + reg;
+    RIA.rw1 = data;
+#else
+    RIA.addr1 = OPL_ADDR;
     RIA.step1 = 1;
-    
-    RIA.rw1 = reg;   // Write Index (FF00)
-    RIA.rw1 = data;  // Write Data  (FF01)
-    // Any delays are now handled by the FIFO in hardware
+    RIA.rw1 = reg;
+    RIA.rw1 = data;
+#endif
 }
 
 void opl_silence_all() {

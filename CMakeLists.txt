@@ -20,4 +20,5 @@ target_sources(RPMegaRacer PRIVATE
     src/player.c
     src/input.c
     src/opl.c
+    src/instruments.c
 )

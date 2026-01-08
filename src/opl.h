@@ -1,8 +1,6 @@
 #ifndef OPL_H
 #define OPL_H
 
-#define OPL_ADDR 0xFF00
-
 #define MUSIC_FILENAME "DEMO.BIN"
 
 typedef struct {

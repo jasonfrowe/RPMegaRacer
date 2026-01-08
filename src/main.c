@@ -24,6 +24,11 @@ static void init_graphics(void)
 
 }
 
+#define SONG_HZ 60
+uint8_t vsync_last = 0;
+uint16_t timer_accumulator = 0;
+bool music_enabled = true;
+
 int main(void)
 {
     puts("Hello from RPMegaRacer!");
@@ -35,9 +40,32 @@ int main(void)
     // Initialize Graphics 
     init_graphics();
 
-    while (1)
-    {
-        // Main game loop
+    // Initialize OPL
+    OPL_Config(1, OPL_ADDR);
+    opl_init();
+
+    // Start music playback
+    music_init(MUSIC_FILENAME);
+
+    while (1) {
+        // --- 1. SYNC TO VSYNC ---
+        if (RIA.vsync == vsync_last)
+            continue;
+        vsync_last = RIA.vsync;
+
+        // --- 2. DRIVE MUSIC ---
+        // This math allows any SONG_HZ to work on a 60Hz VSync
+        if (music_enabled) {
+            timer_accumulator += SONG_HZ;
+            while (timer_accumulator >= 60) {
+                update_music();
+                timer_accumulator -= 60;
+            }
+        }
+
+        // --- 3. YOUR GAME LOGIC ---
+        // Move sprites, check keys, etc.
+        // You can safely use RIA.addr0/rw0 here!
     }
 
 }
