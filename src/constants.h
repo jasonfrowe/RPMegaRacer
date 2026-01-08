@@ -7,6 +7,7 @@
 
 // Sprite data configuration
 #define SPRITE_DATA_START       0x0000U // Starting address in XRAM for sprite data
+#define REDRACER_DATA           (SPRITE_DATA_START) // Address for RedRacer sprite
 #define REDRACER_DATA_SIZE      0x0200U // Size of the RedRacer sprite data
 
 #define SPRITE_DATA_END         (SPRITE_DATA_START + REDRACER_DATA_SIZE)

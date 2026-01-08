@@ -14,15 +14,24 @@ static void init_graphics(void)
     xregn(1, 0, 0, 1, 1); // 320x240 (4:3)
 
     REDRACER_CONFIG = SPRITE_DATA_END;
-    xram0_struct_set(REDRACER_CONFIG, vga_mode4_sprite_t, x_pos_px, startX);
-    xram0_struct_set(REDRACER_CONFIG, vga_mode4_sprite_t, y_pos_px, startY);
-    xram0_struct_set(REDRACER_CONFIG, vga_mode4_sprite_t, xram_sprite_ptr, SPRITE_DATA_START);
-    xram0_struct_set(REDRACER_CONFIG, vga_mode4_sprite_t, log_size, 4); // 16x16
-    xram0_struct_set(REDRACER_CONFIG, vga_mode4_sprite_t, has_opacity_metadata, false);
 
-    xregn(1, 0, 1, 5, 4, 0, REDRACER_CONFIG, 1, 1); // Enable RedRacer sprite
+    xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, transform[0], 256); // SX  (Scale X)
+    xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, transform[1], 0);   // SHY (Shear Y)
+    xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, transform[2], 0);   // TX  (Translate X)
+    xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, transform[3], 0);   // SHX (Shear X)
+    xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, transform[4], 256); // SY  (Scale Y)
+    xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, transform[5], 0);   // TY  (Translate Y)
 
-    printf("Sprite Config at 0x%04X\n", REDRACER_CONFIG);
+    xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, x_pos_px, car.x >> 8);
+    xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, y_pos_px, car.y >> 8);
+    xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, xram_sprite_ptr, REDRACER_DATA);
+    xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, log_size, 4); // 16x16
+    xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, has_opacity_metadata, false);
+
+    xregn(1, 0, 1, 5, 4, 1, REDRACER_CONFIG, 1, 1); // Enable RedRacer sprite
+
+    printf("Redracer Data at 0x%04X\n", REDRACER_DATA);
+    printf("Redracer Config at 0x%04X\n", REDRACER_CONFIG);
     printf("OPL Config = 0x%X\n", OPL_ADDR);
     printf("GAME_PAD_CONFIG=0x%X\n", GAMEPAD_INPUT);
     printf("KEYBOARD_CONFIG=0x%X\n", KEYBOARD_INPUT);
@@ -43,6 +52,7 @@ int main(void)
     // Enable gamepad input
     xregn(0, 0, 2, 1, GAMEPAD_INPUT);
     // Initialize Graphics 
+    init_player();
     init_graphics();
 
     // Initialize input mappings (ensure `button_mappings` are set)
@@ -54,8 +64,6 @@ int main(void)
 
     // Start music playback
     music_init(MUSIC_FILENAME);
-
-    init_player();
 
     while (1) {
         // --- 1. SYNC TO VSYNC ---

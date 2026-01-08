@@ -45,10 +45,10 @@ void init_player(void) {
 void update_player(Car *p) {
     // 1. Handle Rotation
     if (is_action_pressed(0, ACTION_ROTATE_LEFT)) {
-        p->angle -= TURN_SPEED;
+        p->angle += TURN_SPEED;
     }
     if (is_action_pressed(0, ACTION_ROTATE_RIGHT)) {
-        p->angle += TURN_SPEED;
+        p->angle -= TURN_SPEED;
     }
 
     // 2. Derive Sine and Cosine from the single SIN_LUT
@@ -60,8 +60,8 @@ void update_player(Car *p) {
     if (is_action_pressed(0, ACTION_THRUST)) {
         // We add the thrust vector to the velocity
         // We scale the LUT values (-127 to 127) to fit our 8.8 fixed point
-        p->vel_x += (int16_t)sin_val >> (THRUST_SCALER);
-        p->vel_y -= (int16_t)cos_val >> (THRUST_SCALER); // Minus because Y-up is negative
+        p->vel_x -= (int16_t)sin_val >> THRUST_SCALER;
+        p->vel_y -= (int16_t)cos_val >> THRUST_SCALER;
     }
 
     // 4. Apply Friction (Drag)
@@ -101,15 +101,28 @@ void update_player(Car *p) {
 }
 
 void draw_player(Car *p) {
-    uint16_t screen_x = (uint16_t)(p->x >> 8);
-    uint16_t screen_y = (uint16_t)(p->y >> 8);
+    uint16_t ptr = REDRACER_CONFIG;
 
-    // printf("Player Pos: (%u, %u) Angle: %u\n", screen_x, screen_y, p->angle);
+    // 1. Get Sin/Cos and scale to your ~255 range (127 * 2)
+    int16_t s = (int16_t)SIN_LUT[p->angle] << 1;
+    int16_t c = (int16_t)SIN_LUT[(p->angle + 64) & 0xFF] << 1;
 
-    // Send screen_x and screen_y to the RIA Sprite Registers
-    // Also send p->angle if you are using RIA hardware rotation!
+    // 2. Set Rotation Matrix (SX, SHY, SHX, SY)
+    xram0_struct_set(ptr, vga_mode4_asprite_t, transform[0],  c); // SX
+    xram0_struct_set(ptr, vga_mode4_asprite_t, transform[1], -s); // SHY
+    xram0_struct_set(ptr, vga_mode4_asprite_t, transform[3],  s); // SHX
+    xram0_struct_set(ptr, vga_mode4_asprite_t, transform[4],  c); // SY
 
-    xram0_struct_set(REDRACER_CONFIG, vga_mode4_sprite_t, x_pos_px, screen_x);
-    xram0_struct_set(REDRACER_CONFIG, vga_mode4_sprite_t, y_pos_px, screen_y);
+    // 3. Reconciled Pivot Translation (Logic from t2_fix4)
+    // We use 8 as the multiplier for a 16x16 sprite centered at 8,8
+    // Note: 256 is the RIA 1.0 identity scale
+    int16_t tx = 8 * (256 - c + s);
+    int16_t ty = 8 * (256 - c - s);
 
+    xram0_struct_set(ptr, vga_mode4_asprite_t, transform[2], tx);
+    xram0_struct_set(ptr, vga_mode4_asprite_t, transform[5], ty);
+
+    // 4. Update Position (Whole pixels)
+    xram0_struct_set(ptr, vga_mode4_asprite_t, x_pos_px, (int16_t)(p->x >> 8));
+    xram0_struct_set(ptr, vga_mode4_asprite_t, y_pos_px, (int16_t)(p->y >> 8));
 }

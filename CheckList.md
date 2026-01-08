@@ -7,7 +7,7 @@
     - [ ] Tilemap data
     - [ ] Tile bitmaps
     - [x] Sprite bitmaps
-    - [ ] OPL2 register buffers/music data
+    - [x] OPL2 register buffers/music data
 
 ### Phase 2: Graphics & Asset Pipeline
 - [x] **Sprite Sheet Creation:** Create a 16x16 car sprite.
@@ -17,12 +17,12 @@
 
 ### Phase 3: Physics & Movement (C / Fixed-Point)
 Since you are using LLVM-MOS, you can use `structs` to manage car state, which will make the code much cleaner than pure assembly.
-- [ ] **State Structure:** Define a `Car` struct (x, y, velocity, angle, acceleration).
-- [ ] **Fixed-Point Library:** Implement a basic 16.16 or 8.8 fixed-point math system for smooth movement.
-- [ ] **Steering Logic:**
+- [x] **State Structure:** Define a `Car` struct (x, y, velocity, angle, acceleration).
+- [x] **Fixed-Point Library:** Implement a basic 16.16 or 8.8 fixed-point math system for smooth movement.
+- [x] **Steering Logic:**
     - Map Left/Right input to change the `angle` variable.
     - Map Accelerate to apply force along the vector defined by `angle`.
-- [ ] **Centripetal Force / Friction:** Implement "sideways" friction so the car can drift. (Velocity shouldn't immediately match the angle of the car).
+- [x] **Centripetal Force / Friction:** Implement "sideways" friction so the car can drift. (Velocity shouldn't immediately match the angle of the car).
 
 ### Phase 4: Track Logic & AI
 - [ ] **Tile Collision Map:** Create a 1-bit or 2-bit map in XRAM to define "Track," "Grass," and "Wall."
@@ -59,6 +59,3 @@ This is the heart of your "Mega" version.
 - [ ] **Affine Sprite Benchmarking:** If using the RIA's hardware rotation, test how many 16x16 affine sprites you can draw before the scanline limit is hit. 
 - [ ] **Sprite-to-Sprite Collision:** Basic circle-based collision so cars can bump each other off-course.
 - [ ] **Visual Juice:** Add small "smoke" or "dust" sprites that spawn behind cars when they drift or drive on dirt.
-
-### Recommended Next Step
-Start by getting the **16x16 Car Sprite** on a **320x240** screen and implement basic **Tank Controls** (Rotate to change heading, Up to move forward). Once the car moves on a blank screen, the "feel" of the game is born!
