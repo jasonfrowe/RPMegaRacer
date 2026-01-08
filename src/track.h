@@ -1,0 +1,14 @@
+#ifndef TRACK_H
+#define TRACK_H
+
+#define TERRAIN_ROAD  0
+#define TERRAIN_GRASS 1
+#define TERRAIN_WALL  2
+#define TERRAIN_BOOST 3
+
+extern uint8_t world_map[3072];
+extern uint8_t tile_properties[256];
+extern void init_track_physics(void);
+extern uint8_t get_terrain_at(uint16_t x, uint16_t y);
+
+#endif // TRACK_H

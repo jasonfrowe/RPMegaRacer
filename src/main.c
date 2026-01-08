@@ -5,6 +5,7 @@
 #include "player.h"
 #include "input.h"
 #include "opl.h"
+#include "track.h"
 
 unsigned REDRACER_CONFIG;   // RedRacer Sprite Configuration
 unsigned TRACK_MAP_START;   // Start of track map data in XRAM
@@ -21,7 +22,7 @@ static void init_graphics(void)
     uint16_t tile_palette[16] = {
         0x0020,  // Index 0 (Transparent)
         0x0020,
-        0x20A3,
+        0x41A7,
         0x1AE0,
         0x72AA,
         0x0038,
@@ -68,12 +69,28 @@ static void init_graphics(void)
     TRACK_MAP_START = END_OF_SPRITES;
     TRACK_MAP_END   = (TRACK_MAP_START + TRACK_MAP_SIZE);
 
+    // Get a copy of the track map in RAM for collision detection
+    RIA.addr0 = TRACK_MAP_START;
+    RIA.step0 = 1;
+    for (unsigned i = 0; i < TRACK_MAP_SIZE; i++) {
+        world_map[i] = RIA.rw0;
+        // printf("%02X ", world_map[i]);
+    }
+
     TRACK_CONFIG = TRACK_MAP_END;
 
-    xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, x_wrap, true);
-    xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, y_wrap, true);
-    xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, x_pos_px, 0);
-    xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, y_pos_px, 0);
+    int16_t cam_x = 260 - 160; // 100
+    int16_t cam_y = 60 - 120;  // -60 (will be clamped to 0)
+
+    if (cam_x < 0) cam_x = 0;
+    if (cam_x > 192) cam_x = 192; // (512 - 320)
+    if (cam_y < 0) cam_y = 0;
+    if (cam_y > 144) cam_y = 144; // (384 - 240)
+
+    xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, x_wrap, false);
+    xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, y_wrap, false);
+    xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, x_pos_px, cam_x);
+    xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, y_pos_px, cam_y);
     xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, width_tiles, TRACK_MAP_WIDTH_TILES);
     xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, height_tiles, TRACK_MAP_HEIGHT_TILES);
     xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, xram_data_ptr, TRACK_MAP_START);
@@ -97,6 +114,10 @@ uint8_t vsync_last = 0;
 uint16_t timer_accumulator = 0;
 bool music_enabled = true;
 
+// Globals to track camera
+int16_t camera_x = 0;
+int16_t camera_y = 0;
+
 int main(void)
 {
     puts("Hello from RPMegaRacer!");
@@ -108,6 +129,7 @@ int main(void)
     // Initialize Graphics 
     init_player();
     init_graphics();
+    init_track_physics(); // Initialize terrain collision properties
 
     // Initialize input mappings (ensure `button_mappings` are set)
     init_input_system(); 
@@ -142,8 +164,41 @@ int main(void)
         // Update player
         update_player(&car);
 
+        // Check collisions
+        check_collisions(&car);
+
+        // Camera system with deadzone - only scroll when car gets near edges
+        int16_t car_px_x = car.x >> 8;
+        int16_t car_px_y = car.y >> 8;
+        
+        // Calculate ideal camera offset into the map (for wrapped tilemap)
+        // We want car centered, so offset = screen_center - car_position
+        int16_t target_offset_x = 160 - car_px_x;
+        int16_t target_offset_y = 120 - car_px_y;
+        
+        // Clamp camera offset to valid map bounds
+        // Map is 512x384, screen is 320x240
+        // Offset range: x [-192 to 0], y [-144 to 0]
+        if (target_offset_x > 0) target_offset_x = 0;          // Don't scroll past left edge
+        if (target_offset_x < -192) target_offset_x = -192;    // Don't scroll past right edge (512-320=192)
+        if (target_offset_y > 0) target_offset_y = 0;          // Don't scroll past top edge
+        if (target_offset_y < -144) target_offset_y = -144;    // Don't scroll past bottom edge (384-240=144)
+        
+        int16_t scroll_x = target_offset_x;
+        int16_t scroll_y = target_offset_y;
+
+        xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, x_pos_px, scroll_x);
+        xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, y_pos_px, scroll_y);
+
+        // Calculate car's screen position
+        int16_t screen_x = car_px_x + scroll_x;
+        int16_t screen_y = car_px_y + scroll_y;
+
         // Draw player
-        draw_player(&car);
+        draw_player(&car, screen_x, screen_y);
+
+        // printf("Car Pos: (%ld, %ld) Vel:(%d, %d) Angle:%d  \n", car.x >> 8, car.y >> 8, car.vel_x, car.vel_y, car.angle);
+        // printf("Camera: (%d, %d) Screen: (%d, %d)        \n", scroll_x, scroll_y, screen_x, screen_y);
 
     }
 

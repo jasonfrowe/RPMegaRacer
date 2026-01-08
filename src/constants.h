@@ -24,11 +24,12 @@
 #define PSG_XRAM_ADDR   0xFFC0  // PSG memory location (must match sound.c)
 
 extern unsigned REDRACER_CONFIG;  // RedRacer Sprite Configuration
+extern unsigned TRACK_CONFIG;     // Track Tilemap Configuration
 
 // Track tile map
 #define TRACK_MAP_WIDTH_TILES   64
 #define TRACK_MAP_HEIGHT_TILES  48
-#define MAP_BYTES_PER_TILE       2
+#define MAP_BYTES_PER_TILE       1
 #define TRACK_MAP_SIZE          (TRACK_MAP_WIDTH_TILES * TRACK_MAP_HEIGHT_TILES * MAP_BYTES_PER_TILE)
 
 #endif // CONSTANTS_H

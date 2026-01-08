@@ -22,6 +22,7 @@ extern const int8_t SIN_LUT[256];
 
 extern void init_player(void);
 extern void update_player(Car *p);
-extern void draw_player(Car *p);
+extern void draw_player(Car *p, int16_t screen_x, int16_t screen_y);
+extern void check_collisions(Car *p);
 
 #endif // PLAYER_H
