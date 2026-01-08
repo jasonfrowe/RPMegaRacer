@@ -20,7 +20,7 @@ static void init_graphics(void)
     xram0_struct_set(REDRACER_CONFIG, vga_mode4_sprite_t, log_size, 4); // 16x16
     xram0_struct_set(REDRACER_CONFIG, vga_mode4_sprite_t, has_opacity_metadata, false);
 
-    xregn(1, 0, 1, 5, 4, 0, REDRACER_CONFIG, 1); // Enable RedRacer sprite
+    xregn(1, 0, 1, 5, 4, 0, REDRACER_CONFIG, 1, 1); // Enable RedRacer sprite
 
     printf("Sprite Config at 0x%04X\n", REDRACER_CONFIG);
     printf("OPL Config = 0x%X\n", OPL_ADDR);

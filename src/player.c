@@ -66,8 +66,25 @@ void update_player(Car *p) {
 
     // 4. Apply Friction (Drag)
     // This reduces velocity slightly every frame to simulate momentum
-    p->vel_x -= (p->vel_x >> FRICTION_SHIFT);
-    p->vel_y -= (p->vel_y >> FRICTION_SHIFT);
+    int16_t drag_x = (p->vel_x >> FRICTION_SHIFT);
+    int16_t drag_y = (p->vel_y >> FRICTION_SHIFT);
+
+    // If the proportional drag is 0 but the car is still moving, 
+    // force it to slow down by 1 unit.
+    if (drag_x == 0 && p->vel_x != 0) {
+        drag_x = (p->vel_x > 0) ? 1 : -1;
+    }
+    if (drag_y == 0 && p->vel_y != 0) {
+        drag_y = (p->vel_y > 0) ? 1 : -1;
+    }
+
+    p->vel_x -= drag_x;
+    p->vel_y -= drag_y;
+
+    // 3. Deadzone (Optional but recommended)
+    // If velocity is extremely low, just kill it to prevent "micro-drifting"
+    if (p->vel_x < 4 && p->vel_x > -4) p->vel_x = 0;
+    if (p->vel_y < 4 && p->vel_y > -4) p->vel_y = 0;
 
     // 5. Apply Velocity to Position
     // Position is 24.8, Velocity is 8.8. They add together perfectly.
@@ -87,7 +104,7 @@ void draw_player(Car *p) {
     uint16_t screen_x = (uint16_t)(p->x >> 8);
     uint16_t screen_y = (uint16_t)(p->y >> 8);
 
-    printf("Player Pos: (%u, %u) Angle: %u\n", screen_x, screen_y, p->angle);
+    // printf("Player Pos: (%u, %u) Angle: %u\n", screen_x, screen_y, p->angle);
 
     // Send screen_x and screen_y to the RIA Sprite Registers
     // Also send p->angle if you are using RIA hardware rotation!

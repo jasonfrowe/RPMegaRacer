@@ -2,7 +2,7 @@
 #define PLAYER_H
 
 #define FRICTION_SHIFT 5  // Higher = less friction (more "icy")
-#define THRUST_SCALER  2  // Tuning: how fast the car accelerates
+#define THRUST_SCALER  3  // Tuning: how fast the car accelerates
 #define TURN_SPEED     4  // How many angle units to turn per frame
 
 typedef struct {
