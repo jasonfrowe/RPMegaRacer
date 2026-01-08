@@ -3,3 +3,4 @@ __pycache__
 /build
 CMakeUserPresets.json
 Sprites
+.DS_Store

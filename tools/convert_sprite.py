@@ -10,6 +10,7 @@ def rp6502_pack_tile_bpp4(p1, p2):
     # Pack two 4-bit pixels into one byte
     # Pixel 1 in high nibble, Pixel 2 in low nibble
     return ((p1 & 0x0F) << 4) | (p2 & 0x0F)
+    # return (p1 & 0x0F) | ((p2 & 0x0F) << 4) 
 
 def rp6502_rgb_sprite_bpp16(r, g, b, a):
     if a < 128:
