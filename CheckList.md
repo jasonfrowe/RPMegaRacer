@@ -35,7 +35,7 @@ Since you are using LLVM-MOS, you can use `structs` to manage car state, which w
 
 ### Phase 5: OPL2 Audio Implementation
 This is the heart of your "Mega" version.
-- [ ] **Driver Integration:** Integrate your `RP6502_OPL2` code.
+- [x] **Driver Integration:** Integrate your `RP6502_OPL2` code.
 - [ ] **Dynamic Engine Hum:**
     - Use one OPL2 channel for the player's engine.
     - Map the car's `velocity` to the OPL2 **F-Number (frequency)**. As the car goes faster, the pitch of the FM synth rises.
@@ -43,7 +43,7 @@ This is the heart of your "Mega" version.
     - Tire screech (Noise channel or high-mod frequency).
     - Crash/Wall hit (Explosive percussive sound).
     - Lap completion "Ding."
-- [ ] **Music Engine:** A simple VGM or custom tracker player to handle the "Shop" or "Menu" music.
+- [x] **Music Engine:** A simple VGM or custom tracker player to handle the "Shop" or "Menu" music.
 
 ### Phase 6: The "Super Sprint" UI & Meta
 - [ ] **The "Shop" Screen:** Implement the between-race upgrade menu.

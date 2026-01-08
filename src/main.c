@@ -22,6 +22,11 @@ static void init_graphics(void)
 
     xregn(1, 0, 1, 5, 4, 0, REDRACER_CONFIG, 1); // Enable RedRacer sprite
 
+    printf("Sprite Config at 0x%04X\n", REDRACER_CONFIG);
+    printf("OPL Config = 0x%X\n", OPL_ADDR);
+    printf("GAME_PAD_CONFIG=0x%X\n", GAMEPAD_INPUT);
+    printf("KEYBOARD_CONFIG=0x%X\n", KEYBOARD_INPUT);
+
 }
 
 #define SONG_HZ 60
@@ -40,12 +45,17 @@ int main(void)
     // Initialize Graphics 
     init_graphics();
 
+    // Initialize input mappings (ensure `button_mappings` are set)
+    init_input_system(); 
+
     // Initialize OPL
     OPL_Config(1, OPL_ADDR);
     opl_init();
 
     // Start music playback
     music_init(MUSIC_FILENAME);
+
+    init_player();
 
     while (1) {
         // --- 1. SYNC TO VSYNC ---
@@ -64,8 +74,15 @@ int main(void)
         }
 
         // --- 3. YOUR GAME LOGIC ---
-        // Move sprites, check keys, etc.
-        // You can safely use RIA.addr0/rw0 here!
+        // Handle input
+        handle_input();
+
+        // Update player
+        update_player(&car);
+
+        // Draw player
+        draw_player(&car);
+
     }
 
 }

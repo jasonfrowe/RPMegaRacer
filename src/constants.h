@@ -18,4 +18,6 @@
 #define KEYBOARD_INPUT  0xFFA0  // XRAM address for keyboard data
 #define PSG_XRAM_ADDR   0xFFC0  // PSG memory location (must match sound.c)
 
+extern unsigned REDRACER_CONFIG;  // RedRacer Sprite Configuration
+
 #endif // CONSTANTS_H
