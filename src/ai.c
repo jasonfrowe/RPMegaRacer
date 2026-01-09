@@ -5,82 +5,37 @@
 #include <rp6502.h>
 #include <stdlib.h>
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+#define AI_TURN_SPEED 3
+#define AI_MAX_ACCEL 1      // Full thrust scaler
+#define AI_REDUCED_ACCEL 2  // Reduced thrust scaler for turns
 
-// Integer square root using Newton's method
-static uint16_t isqrt(uint32_t n) {
-    if (n == 0) return 0;
-    uint16_t x = n;
-    uint16_t y = (x + 1) >> 1;
-    while (y < x) {
-        x = y;
-        y = (x + n / x) >> 1;
+// Calculate the shortest way to turn from current_angle to target_angle
+static void ai_steer_toward(AICar *ai, uint8_t target_angle) {
+    // 8-bit math handles wrap-around automatically
+    uint8_t diff = target_angle - ai->car.angle;
+
+    if (diff == 0) return;
+
+    // If diff is 1-127, target is to the "right" (CW)
+    // If diff is 128-255, target is to the "left" (CCW)
+    if (diff < 128) {
+        ai->car.angle += AI_TURN_SPEED;
+    } else {
+        ai->car.angle -= AI_TURN_SPEED;
     }
-    return x;
 }
 
-// Integer atan2 returning angle in 0-255 range (matches our angle system)
-// Angle system: 0=Up/North, 64=Left/West, 128=Down/South, 192=Right/East
-static uint8_t iatan2(int16_t dy, int16_t dx) {
-    // Handle zero cases
-    if (dx == 0 && dy == 0) return 0;
+// Apply thrust with variable acceleration
+static void ai_apply_thrust(AICar *ai, uint8_t thrust_scaler) {
+    // Use SIN_LUT from player module
+    extern const int8_t SIN_LUT[256];
     
-    // Determine quadrant and calculate angle
-    // Our system: X increases right, Y increases down
-    // 0 = Up (negative Y), 64 = Left (negative X), 128 = Down (positive Y), 192 = Right (positive X)
+    int8_t sin_val = SIN_LUT[ai->car.angle];
+    int8_t cos_val = SIN_LUT[(ai->car.angle + 64) & 0xFF];
     
-    uint8_t angle;
-    
-    // Use absolute values for calculation
-    int16_t abs_dx = (dx < 0) ? -dx : dx;
-    int16_t abs_dy = (dy < 0) ? -dy : dy;
-    
-    // Calculate base angle in first octant (0-64)
-    if (abs_dx > abs_dy) {
-        // More horizontal than vertical
-        if (abs_dy == 0) {
-            angle = 0;
-        } else {
-            angle = (abs_dy * 64) / abs_dx;
-        }
-    } else {
-        // More vertical than horizontal
-        if (abs_dx == 0) {
-            angle = 64;
-        } else {
-            angle = 64 - (abs_dx * 64) / abs_dy;
-        }
-    }
-    
-    // Map to correct quadrant based on signs
-    // dx < 0, dy < 0: upper-left quadrant (angles 0-64)
-    // dx > 0, dy < 0: upper-right quadrant (angles 192-256/0)
-    // dx < 0, dy > 0: lower-left quadrant (angles 64-128)
-    // dx > 0, dy > 0: lower-right quadrant (angles 128-192)
-    
-    if (dy < 0) {
-        // Upper half (moving up)
-        if (dx < 0) {
-            // Upper-left: angle 0-64 (up to left)
-            angle = 64 - angle;
-        } else {
-            // Upper-right: angle 192-256 (right to up)
-            angle = 256 - angle;
-        }
-    } else {
-        // Lower half (moving down)
-        if (dx < 0) {
-            // Lower-left: angle 64-128 (left to down)
-            angle = 64 + angle;
-        } else {
-            // Lower-right: angle 128-192 (down to right)
-            angle = 128 + angle;
-        }
-    }
-    
-    return angle;
+    // Apply thrust (same as player but with variable strength)
+    ai->car.vel_x -= (int16_t)sin_val >> thrust_scaler;
+    ai->car.vel_y -= (int16_t)cos_val >> thrust_scaler;
 }
 
 AICar ai_cars[NUM_AI_CARS];
@@ -122,6 +77,8 @@ void init_ai(void) {
 }
 
 void update_ai(void) {
+    extern const int8_t SIN_LUT[256];
+    
     for (uint8_t i = 0; i < NUM_AI_CARS; i++) {
         AICar *ai = &ai_cars[i];
         
@@ -131,79 +88,73 @@ void update_ai(void) {
             continue;  // Don't drive yet
         }
         
-        // Get current waypoint with offset
+        // Get current car position
+        int16_t car_x = ai->car.x >> 8;
+        int16_t car_y = ai->car.y >> 8;
+        
+        // Get current waypoint target (with offset)
         int16_t target_x = waypoints[ai->current_waypoint].x + ai->offset_x;
         int16_t target_y = waypoints[ai->current_waypoint].y + ai->offset_y;
         
-        // Check if we've reached the current waypoint
-        int16_t car_x = ai->car.x >> 8;
-        int16_t car_y = ai->car.y >> 8;
+        // Calculate distance to current waypoint
         int16_t dx = target_x - car_x;
         int16_t dy = target_y - car_y;
-        int32_t dist_sq = (int32_t)dx * dx + (int32_t)dy * dy;
+        uint32_t dist_sq = (int32_t)dx * dx + (int32_t)dy * dy;
         
-        // Switch waypoint if close enough OR if we're moving away from it
-        // (prevents getting stuck if we overshoot)
-        if (dist_sq < (WAYPOINT_REACH_RADIUS * WAYPOINT_REACH_RADIUS)) {
-            // Move to next waypoint
+        // If within 40 pixels, move to NEXT waypoint early
+        if (dist_sq < (40 * 40)) {
             ai->current_waypoint = (ai->current_waypoint + 1) % NUM_WAYPOINTS;
             // Generate new random offset
             ai->offset_x = (rand() % 20) - 10;
             ai->offset_y = (rand() % 20) - 10;
             
-            // Update target
+            // Update target to new waypoint
             target_x = waypoints[ai->current_waypoint].x + ai->offset_x;
             target_y = waypoints[ai->current_waypoint].y + ai->offset_y;
             
-            // Recalculate for steering
+            // Recalculate distance
             dx = target_x - car_x;
             dy = target_y - car_y;
         }
         
-        // Add look-ahead: steer toward a point 10 pixels past the waypoint
-        uint8_t next_wp = (ai->current_waypoint + 1) % NUM_WAYPOINTS;
-        int16_t lookahead_dx = waypoints[next_wp].x - waypoints[ai->current_waypoint].x;
-        int16_t lookahead_dy = waypoints[next_wp].y - waypoints[ai->current_waypoint].y;
+        // Use cross product to determine turn direction (replaces atan2)
+        // Forward vector from car angle
+        int8_t forward_x = -SIN_LUT[ai->car.angle];  // cos component
+        int8_t forward_y = -SIN_LUT[(ai->car.angle + 64) & 0xFF];  // sin component
         
-        // Normalize and scale by look-ahead distance
-        uint32_t la_dist_sq = (uint32_t)(lookahead_dx * lookahead_dx + lookahead_dy * lookahead_dy);
-        int16_t la_dist = isqrt(la_dist_sq);
-        if (la_dist > 0) {
-            target_x += (lookahead_dx * WAYPOINT_LOOKAHEAD) / la_dist;
-            target_y += (lookahead_dy * WAYPOINT_LOOKAHEAD) / la_dist;
-        }
+        // Target vector (already calculated as dx, dy)
         
-        // Calculate desired angle to target
-        dx = target_x - car_x;
-        dy = target_y - car_y;
+        // Cross product: (f_x * t_y) - (f_y * t_x)
+        int32_t cross = ((int32_t)forward_x * dy) - ((int32_t)forward_y * dx);
         
-        // Use integer atan2 that returns 0-255 angle directly
-        uint8_t target_angle = iatan2(dy, dx);  // dy first to match our coordinate system
-        
-        // Steer toward target angle
-        int16_t angle_diff = target_angle - ai->car.angle;
-        
-        // Handle wrapping (e.g., turning from 250 to 10 should be +16, not -240)
-        if (angle_diff > 128) angle_diff -= 256;
-        if (angle_diff < -128) angle_diff += 256;
-        
-        // Apply steering (limit turn rate)
-        #define AI_TURN_SPEED 3
-        if (angle_diff > AI_TURN_SPEED) {
-            ai->car.angle += AI_TURN_SPEED;
-        } else if (angle_diff < -AI_TURN_SPEED) {
-            ai->car.angle -= AI_TURN_SPEED;
+        // Determine target angle based on cross product
+        uint8_t target_angle;
+        if (cross > 0) {
+            // Turn right (clockwise)
+            target_angle = ai->car.angle + 1;
+        } else if (cross < 0) {
+            // Turn left (counter-clockwise)
+            target_angle = ai->car.angle - 1;
         } else {
-            ai->car.angle = target_angle;
+            // Straight ahead
+            target_angle = ai->car.angle;
         }
         
-        // Apply constant forward thrust
-        int8_t sin_val = SIN_LUT[ai->car.angle];
-        int8_t cos_val = SIN_LUT[(ai->car.angle + 64) & 0xFF];
+        // Steer toward target using wrap-around logic
+        ai_steer_toward(ai, target_angle);
         
-        // AI cars thrust forward constantly (same as player thrust)
-        ai->car.vel_x -= (int16_t)sin_val >> THRUST_SCALER;
-        ai->car.vel_y -= (int16_t)cos_val >> THRUST_SCALER;
+        // Calculate absolute angle difference for throttle control
+        uint8_t angle_diff = target_angle - ai->car.angle;
+        if (angle_diff > 128) angle_diff = 256 - angle_diff;
+        
+        // AI brake logic - adjust thrust based on turn sharpness
+        if (angle_diff > 32) {
+            // Sharp turn! Use reduced acceleration
+            ai_apply_thrust(ai, AI_REDUCED_ACCEL);
+        } else {
+            // Straight line! Full speed
+            ai_apply_thrust(ai, AI_MAX_ACCEL);
+        }
         
         // Apply friction
         int16_t drag_x = (ai->car.vel_x >> FRICTION_SHIFT);
