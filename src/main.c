@@ -118,6 +118,8 @@ bool music_enabled = true;
 int16_t camera_x = 0;
 int16_t camera_y = 0;
 
+int16_t next_scroll_x, next_scroll_y;
+
 int main(void)
 {
     puts("Hello from RPMegaRacer!");
@@ -146,6 +148,11 @@ int main(void)
         if (RIA.vsync == vsync_last)
             continue;
         vsync_last = RIA.vsync;
+
+        xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, x_pos_px, next_scroll_x);
+        xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, y_pos_px, next_scroll_y);
+
+        
 
         // --- 2. DRIVE MUSIC ---
         // This math allows any SONG_HZ to work on a 60Hz VSync
@@ -184,15 +191,15 @@ int main(void)
         if (target_offset_y > 0) target_offset_y = 0;          // Don't scroll past top edge
         if (target_offset_y < -144) target_offset_y = -144;    // Don't scroll past bottom edge (384-240=144)
         
-        int16_t scroll_x = target_offset_x;
-        int16_t scroll_y = target_offset_y;
+        next_scroll_x = target_offset_x;
+        next_scroll_y = target_offset_y;
 
-        xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, x_pos_px, scroll_x);
-        xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, y_pos_px, scroll_y);
+        // xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, x_pos_px, scroll_x);
+        // xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, y_pos_px, scroll_y);
 
         // Calculate car's screen position
-        int16_t screen_x = car_px_x + scroll_x;
-        int16_t screen_y = car_px_y + scroll_y;
+        int16_t screen_x = car_px_x + next_scroll_x;
+        int16_t screen_y = car_px_y + next_scroll_y;
 
         // Draw player
         draw_player(&car, screen_x, screen_y);
