@@ -6,18 +6,61 @@
 #include <stdlib.h>
 
 #define AI_TURN_SPEED 3
-#define AI_MAX_THRUST_SHIFT 4      // Full thrust (smaller = more power)
-#define AI_REDUCED_THRUST_SHIFT 5  // Reduced thrust for turns
+#define AI_MAX_THRUST_SHIFT 3      // Full thrust - same as player THRUST_SCALER
+#define AI_REDUCED_THRUST_SHIFT 4  // Reduced thrust for sharp turns
 
-// Calculate the shortest way to turn from current_angle to target_angle
-static void ai_steer_toward(AICar *ai, uint8_t target_angle) {
-    // 8-bit math handles wrap-around automatically
+// Standard atan2 in 8-bit: 0=Right, 64=Down, 128=Left, 192=Up
+static uint8_t atan2_8(int16_t dy, int16_t dx) {
+    if (dx == 0 && dy == 0) return 0;
+    
+    // Use absolute values
+    int16_t abs_dx = (dx < 0) ? -dx : dx;
+    int16_t abs_dy = (dy < 0) ? -dy : dy;
+    
+    uint8_t angle;
+    
+    // Calculate base angle
+    if (abs_dx > abs_dy) {
+        // More horizontal
+        if (abs_dy == 0) {
+            angle = 0;
+        } else {
+            angle = (abs_dy * 64) / abs_dx;
+        }
+    } else {
+        // More vertical
+        if (abs_dx == 0) {
+            angle = 64;
+        } else {
+            angle = 64 - (abs_dx * 64) / abs_dy;
+        }
+    }
+    
+    // Map to quadrants: 0=Right, 64=Down, 128=Left, 192=Up
+    if (dx >= 0 && dy >= 0) {
+        // Lower-right: 0-64
+        return angle;
+    } else if (dx < 0 && dy >= 0) {
+        // Lower-left: 64-128
+        return 128 - angle;
+    } else if (dx < 0 && dy < 0) {
+        // Upper-left: 128-192
+        return 128 + angle;
+    } else {
+        // Upper-right: 192-256
+        return 256 - angle;
+    }
+}
+
+// Steer toward target angle using shortest path
+static void ai_steer(AICar *ai, uint8_t target_angle) {
     uint8_t diff = target_angle - ai->car.angle;
 
     if (diff == 0) return;
 
-    // If diff is 1-127, target is to the "right" (CW)
-    // If diff is 128-255, target is to the "left" (CCW)
+    // In a CCW system (0=Up):
+    // 1-127 means target is to the Left
+    // 128-255 means target is to the Right
     if (diff < 128) {
         ai->car.angle += AI_TURN_SPEED;
     } else {
@@ -73,6 +116,7 @@ void init_ai(void) {
         ai_cars[i].offset_y = (rand() % 20) - 10;
         ai_cars[i].sprite_index = i + 1;  // Sprites 1, 2, 3 (player is 0)
         ai_cars[i].startup_delay = 600;  // 10 seconds at 60fps
+        ai_cars[i].stuck_timer = 0;  // Not stuck initially
     }
 }
 
@@ -117,43 +161,66 @@ void update_ai(void) {
             dy = target_y - car_y;
         }
         
-        // Use cross product to determine turn direction (replaces atan2)
-        // Forward vector from car angle
-        int8_t forward_x = -SIN_LUT[ai->car.angle];  // cos component
-        int8_t forward_y = -SIN_LUT[(ai->car.angle + 64) & 0xFF];  // sin component
+        // Detect if stuck: low speed + collision
+        int16_t speed_sq = (ai->car.vel_x >> 8) * (ai->car.vel_x >> 8) + 
+                          (ai->car.vel_y >> 8) * (ai->car.vel_y >> 8);
         
-        // Cross product: (f_x * t_y) - (f_y * t_x)
-        // This tells us if waypoint is to the left or right of our forward direction
-        int32_t cross = ((int32_t)forward_x * dy) - ((int32_t)forward_y * dx);
+        extern uint8_t check_collision_at_pos(int32_t x, int32_t y, uint8_t angle);
+        uint8_t is_colliding = (check_collision_at_pos(ai->car.x, ai->car.y, ai->car.angle) == TERRAIN_WALL);
         
-        // Dot product to determine if waypoint is ahead or behind
-        // (f_x * t_x) + (f_y * t_y)
-        int32_t dot = ((int32_t)forward_x * dx) + ((int32_t)forward_y * dy);
-        
-        // Only steer if waypoint is generally ahead of us
-        if (dot > 0) {
-            // Waypoint is ahead - steer toward it
-            if (cross > 100) {
-                // Waypoint is significantly to the right
-                ai->car.angle += AI_TURN_SPEED;
-            } else if (cross < -100) {
-                // Waypoint is significantly to the left
-                ai->car.angle -= AI_TURN_SPEED;
+        if (is_colliding && speed_sq < 4) {
+            // Car is stuck against wall with low speed
+            ai->stuck_timer++;
+            
+            if (ai->stuck_timer > 30) {  // Stuck for half a second
+                // Recovery mode: turn toward track center (256, 192)
+                int16_t center_dx = 256 - car_x;
+                int16_t center_dy = 192 - car_y;
+                
+                uint8_t center_angle_std = atan2_8(center_dy, center_dx);
+                uint8_t target_angle = (192 - center_angle_std) & 0xFF;
+                
+                // Force turn toward center
+                ai_steer(ai, target_angle);
+                
+                // Apply thrust to get unstuck
+                ai_apply_thrust(ai, AI_MAX_THRUST_SHIFT);
+                
+                // Reset stuck timer after some recovery attempts
+                if (ai->stuck_timer > 60) {
+                    ai->stuck_timer = 0;
+                }
             }
-            // else: waypoint is roughly ahead, go straight
+        } else {
+            // Not stuck, reset timer
+            ai->stuck_timer = 0;
         }
         
-        // Calculate how aligned we are with waypoint for throttle control
-        // Use absolute value of cross product as measure of misalignment
-        int32_t abs_cross = (cross < 0) ? -cross : cross;
+        // Normal navigation (skip if in stuck recovery mode)
+        if (ai->stuck_timer == 0) {
+            // Calculate target angle using standard atan2
+            // 1. Get standard atan2 (0=Right, 64=Down, 128=Left, 192=Up)
+            uint8_t standard_angle = atan2_8(dy, dx);
+            
+            // 2. Convert to CCW 0=Up system
+            // Formula: User_Angle = (192 - standard_angle) & 0xFF
+            uint8_t target_angle = (192 - standard_angle) & 0xFF;
+            
+            // Steer toward target angle
+            ai_steer(ai, target_angle);
         
-        // AI brake logic - adjust thrust based on alignment
-        if (abs_cross > 5000) {
-            // Sharp turn needed! Use reduced acceleration
-            ai_apply_thrust(ai, AI_REDUCED_THRUST_SHIFT);
-        } else {
-            // Roughly aligned! Full speed
-            ai_apply_thrust(ai, AI_MAX_THRUST_SHIFT);
+            // Calculate how far off we are for throttle control
+            uint8_t angle_diff = target_angle - ai->car.angle;
+            if (angle_diff > 128) angle_diff = 256 - angle_diff;
+            
+            // AI brake logic - reduce thrust on sharp turns
+            if (angle_diff > 32) {
+                // Sharp turn! Use reduced acceleration
+                ai_apply_thrust(ai, AI_REDUCED_THRUST_SHIFT);
+            } else {
+                // Roughly aligned! Full speed
+                ai_apply_thrust(ai, AI_MAX_THRUST_SHIFT);
+            }
         }
         
         // Apply friction
