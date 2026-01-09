@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "track.h"
+#include "sound.h"
 
 // Starting position for the player's car
 uint8_t startX = SCREEN_WIDTH / 2;
@@ -35,16 +36,17 @@ const int8_t SIN_LUT[256] = {
 // Cosine is just Sine with a 90-degree (64 step) offset
 // cos_val = SIN_LUT[(angle + 64) & 0xFF];
 
-// Forward declaration
-static uint8_t check_collision_at_pos(int32_t x, int32_t y, uint8_t angle);
+// Forward declaration (made non-static for AI to use)
+uint8_t check_collision_at_pos(int32_t x, int32_t y, uint8_t angle);
 
 void init_player(void) {
     // Initialize player car position and velocity
-    car.x = 260L << 8;
-    car.y = 60L << 8;
+    // Starting position: back of grid, left of starting line
+    car.x = 245L << 8;  // Left of starting line at X=255
+    car.y = 76L << 8;   // Back position in track width (Y=33-86)
     car.vel_x = 0;
     car.vel_y = 0;
-    car.angle = 64; // Facing Left (90 degrees)  0=Up, 64=Left, 128=Down, 192=Right
+    car.angle = 64; // Facing Left (West, 0=Up, 64=Left, 128=Down)
 
 }
 
@@ -115,6 +117,8 @@ void update_player(Car *p) {
         p->y = new_y;
     }
 
+    update_engine_sound((uint16_t)(abs(p->vel_x) + abs(p->vel_y)));
+
     // 5. Clamp to world map bounds (512x384)
     // 512 in 8.8 is 512 * 256 = 131072 (0x20000)
     // 384 in 8.8 is 384 * 256 = 98304 (0x18000)
@@ -160,7 +164,8 @@ void draw_player(Car *p, int16_t screen_x, int16_t screen_y) {
 
 // Helper function to check if any collision point hits a wall at given position/angle
 // Uses a solid rectangular hitbox - checks every pixel, no gaps
-static uint8_t check_collision_at_pos(int32_t x, int32_t y, uint8_t angle) {
+// Made non-static so AI can use it
+uint8_t check_collision_at_pos(int32_t x, int32_t y, uint8_t angle) {
     (void)angle;  // Ignore rotation - use axis-aligned box
     
     int16_t cx = (x >> 8) + 8;  // Center of sprite

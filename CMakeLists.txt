@@ -9,8 +9,8 @@ project(RPMegaRacer C CXX ASM)
 
 add_executable(RPMegaRacer)
 rp6502_asset(RPMegaRacer 0x10000 images/RedRacer.bin)
-rp6502_asset(RPMegaRacer 0x10214 images/Track_Map_A.bin)
-rp6502_asset(RPMegaRacer 0x11A14 images/Track_A_tiles.bin)
+rp6502_asset(RPMegaRacer 0x10850 images/Track_Map_A.bin)
+rp6502_asset(RPMegaRacer 0x11450 images/Track_A_tiles.bin)
 rp6502_executable(RPMegaRacer
     RedRacer.bin.rp6502
     Track_Map_A.bin.rp6502
@@ -26,4 +26,6 @@ target_sources(RPMegaRacer PRIVATE
     src/opl.c
     src/instruments.c
     src/track.c
+    src/sound.c
+    src/ai.c
 )

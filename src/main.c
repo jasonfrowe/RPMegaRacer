@@ -6,6 +6,8 @@
 #include "input.h"
 #include "opl.h"
 #include "track.h"
+#include "sound.h"
+#include "ai.h"
 
 unsigned REDRACER_CONFIG;   // RedRacer Sprite Configuration
 unsigned TRACK_MAP_START;   // Start of track map data in XRAM
@@ -61,12 +63,29 @@ static void init_graphics(void)
     xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, log_size, 4); // 16x16
     xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, has_opacity_metadata, false);
 
-    xregn(1, 0, 1, 5, 4, 1, REDRACER_CONFIG, 1, 1); // Enable RedRacer sprite
+    #define NUM_AI_CARS 3
+    for (unsigned i = 0; i < NUM_AI_CARS; i++) {
+        unsigned config_addr = REDRACER_CONFIG + sizeof(vga_mode4_asprite_t) * (i + 1);
+        unsigned sprite_ptr = REDRACER_DATA + ((i + 1) * 0x200); // Each car sprite uses 0x200 bytes (4 tiles)
+        
+        xram0_struct_set(config_addr, vga_mode4_asprite_t, transform[0], 256); // SX  (Scale X)
+        xram0_struct_set(config_addr, vga_mode4_asprite_t, transform[1], 0);   // SHY (Shear Y)
+        xram0_struct_set(config_addr, vga_mode4_asprite_t, transform[2], 0);   // TX  (Translate X)
+        xram0_struct_set(config_addr, vga_mode4_asprite_t, transform[3], 0);   // SHX (Shear X)
+        xram0_struct_set(config_addr, vga_mode4_asprite_t, transform[4], 256); // SY  (Scale Y)
+        xram0_struct_set(config_addr, vga_mode4_asprite_t, transform[5], 0);   // TY  (Translate Y)
 
-    unsigned END_OF_SPRITES = REDRACER_CONFIG + sizeof(vga_mode4_asprite_t);
+        xram0_struct_set(config_addr, vga_mode4_asprite_t, x_pos_px, (100 + i * 20));
+        xram0_struct_set(config_addr, vga_mode4_asprite_t, y_pos_px, (100 + i * 20));
+        xram0_struct_set(config_addr, vga_mode4_asprite_t, xram_sprite_ptr, sprite_ptr);
+        xram0_struct_set(config_addr, vga_mode4_asprite_t, log_size, 4); // 16x16
+        xram0_struct_set(config_addr, vga_mode4_asprite_t, has_opacity_metadata, false);
+    }
 
-    // Track map data is loaded vi CMakeLists.txt at 0x10214
-    TRACK_MAP_START = END_OF_SPRITES;
+    xregn(1, 0, 1, 5, 4, 1, REDRACER_CONFIG, (NUM_AI_CARS + 1), 1); // Enable Racer sprite
+
+    // Track map data is loaded via CMakeLists.txt at 0x0850
+    TRACK_MAP_START = 0x0850;
     TRACK_MAP_END   = (TRACK_MAP_START + TRACK_MAP_SIZE);
 
     // Get a copy of the track map in RAM for collision detection
@@ -130,6 +149,7 @@ int main(void)
     xregn(0, 0, 2, 1, GAMEPAD_INPUT);
     // Initialize Graphics 
     init_player();
+    init_ai();  // Initialize AI cars
     init_graphics();
     init_track_physics(); // Initialize terrain collision properties
 
@@ -142,6 +162,9 @@ int main(void)
 
     // Start music playback
     music_init(MUSIC_FILENAME);
+
+    // Initialize PSG sound
+    init_psg();
 
     while (1) {
         // --- 1. SYNC TO VSYNC ---
@@ -170,6 +193,9 @@ int main(void)
 
         // Update player
         update_player(&car);
+
+        // Update AI cars
+        update_ai();
 
         // Check collisions
         check_collisions(&car);
@@ -203,6 +229,9 @@ int main(void)
 
         // Draw player
         draw_player(&car, screen_x, screen_y);
+
+        // Draw AI cars
+        draw_ai_cars();
 
         // printf("Car Pos: (%ld, %ld) Vel:(%d, %d) Angle:%d  \n", car.x >> 8, car.y >> 8, car.vel_x, car.vel_y, car.angle);
         // printf("Camera: (%d, %d) Screen: (%d, %d)        \n", scroll_x, scroll_y, screen_x, screen_y);

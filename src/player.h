@@ -24,5 +24,9 @@ extern void init_player(void);
 extern void update_player(Car *p);
 extern void draw_player(Car *p, int16_t screen_x, int16_t screen_y);
 extern void check_collisions(Car *p);
+extern void update_camera(Car *p);
+
+// Collision checking for AI cars
+extern uint8_t check_collision_at_pos(int32_t x, int32_t y, uint8_t angle);
 
 #endif // PLAYER_H
