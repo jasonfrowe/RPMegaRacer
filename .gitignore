@@ -4,3 +4,4 @@ __pycache__
 CMakeUserPresets.json
 Sprites
 .DS_Store
+.venv
