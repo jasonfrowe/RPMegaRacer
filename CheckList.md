@@ -3,16 +3,16 @@
 - [x] **RIA Integration:** Set up the standard library hooks for the RP6502 (XRAM access, register mapping).
 - [x] **Input System Port:** Port your existing input system (USB Gamepad/Keyboard) into the new project.
 - [x] **Video Initialization:** Initialize the RIA to Mode 2 (Tiles) for the background and Mode 4 (Sprites) for the cars.
-- [ ] **XRAM Memory Map:** Define clear boundaries for:
-    - [ ] Tilemap data
-    - [ ] Tile bitmaps
+- [x] **XRAM Memory Map:** Define clear boundaries for:
+    - [x] Tilemap data
+    - [x] Tile bitmaps
     - [x] Sprite bitmaps
     - [x] OPL2 register buffers/music data
 
 ### Phase 2: Graphics & Asset Pipeline
 - [x] **Sprite Sheet Creation:** Create a 16x16 car sprite.
     - *Note:* If using the RIA's **affine transformation** (rotation), you only need *one* frame. If doing software rotation, you'll need 16 or 32 frames of rotation.
-- [ ] **Tilemap Design:** Create a track in *Tiled* (e.g., 40x30 tiles of 8x8 size).
+- [x] **Tilemap Design:** Create a track in *Tiled* (e.g., 40x30 tiles of 8x8 size).
 - [x] **Asset Conversion Script:** Write/modify a Python script to convert PNGs/TMX files into raw header files or binary blobs compatible with the RIA XRAM layout.
 
 ### Phase 3: Physics & Movement (C / Fixed-Point)
@@ -25,8 +25,8 @@ Since you are using LLVM-MOS, you can use `structs` to manage car state, which w
 - [x] **Centripetal Force / Friction:** Implement "sideways" friction so the car can drift. (Velocity shouldn't immediately match the angle of the car).
 
 ### Phase 4: Track Logic & AI
-- [ ] **Tile Collision Map:** Create a 1-bit or 2-bit map in XRAM to define "Track," "Grass," and "Wall."
-- [ ] **Collision Response:** 
+- [x] **Tile Collision Map:** Create a 1-bit or 2-bit map in XRAM to define "Track," "Grass," and "Wall."
+- [x] **Collision Response:** 
     - Grass: Multiply velocity by 0.7 (slow down).
     - Wall: Bounce or stop (and trigger an OPL2 "crunch" sound).
 - [ ] **Waypoint System:** Create an array of `(x, y)` waypoints for AI drones.
