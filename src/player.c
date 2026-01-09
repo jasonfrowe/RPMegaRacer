@@ -35,6 +35,9 @@ const int8_t SIN_LUT[256] = {
 // Cosine is just Sine with a 90-degree (64 step) offset
 // cos_val = SIN_LUT[(angle + 64) & 0xFF];
 
+// Forward declaration
+static uint8_t check_collision_at_pos(int32_t x, int32_t y, uint8_t angle);
+
 void init_player(void) {
     // Initialize player car position and velocity
     car.x = 260L << 8;
@@ -46,7 +49,7 @@ void init_player(void) {
 }
 
 void update_player(Car *p) {
-    // 1. Handle Rotation
+    // 1. Handle Rotation (no collision check - box is axis-aligned)
     if (is_action_pressed(0, ACTION_ROTATE_LEFT)) {
         p->angle += TURN_SPEED;
     }
@@ -65,6 +68,13 @@ void update_player(Car *p) {
         // We scale the LUT values (-127 to 127) to fit our 8.8 fixed point
         p->vel_x -= (int16_t)sin_val >> THRUST_SCALER;
         p->vel_y -= (int16_t)cos_val >> THRUST_SCALER;
+    }
+    
+    // Handle Reverse Thrust (backing up)
+    if (is_action_pressed(0, ACTION_REVERSE_THRUST)) {
+        // Opposite direction of thrust, slightly weaker
+        p->vel_x += (int16_t)sin_val >> (THRUST_SCALER + 1);
+        p->vel_y += (int16_t)cos_val >> (THRUST_SCALER + 1);
     }
 
     // 4. Apply Friction (Drag)
@@ -86,47 +96,26 @@ void update_player(Car *p) {
 
     // 3. Deadzone (Optional but recommended)
     // If velocity is extremely low, just kill it to prevent "micro-drifting"
-    if (p->vel_x < 4 && p->vel_x > -4) p->vel_x = 0;
-    if (p->vel_y < 4 && p->vel_y > -4) p->vel_y = 0;
+    // if (p->vel_x < 4 && p->vel_x > -4) p->vel_x = 0;
+    // if (p->vel_y < 4 && p->vel_y > -4) p->vel_y = 0;
 
-
-    // 4. Calculate car corners in world pixels
-    uint16_t x = p->x >> 8;
-    uint16_t y = p->y >> 8;
+    // 4. Apply Velocity to Position (with collision check)
+    // Position is 24.8, Velocity is 8.8. They add together perfectly.
+    int32_t new_x = p->x + p->vel_x;
+    int32_t new_y = p->y + p->vel_y;
     
-    // We check a slightly smaller hitbox (e.g., 5 pixels out from center) 
-    // so the car can "overlap" edges slightly without crashing.
-    uint8_t tl = get_terrain_at(x - 5, y - 5);
-    uint8_t tr = get_terrain_at(x + 5, y - 5);
-    uint8_t bl = get_terrain_at(x - 5, y + 5);
-    uint8_t br = get_terrain_at(x + 5, y + 5);
-
-    // 5. Handle Wall Collisions (Bounce)
-    if (tl == TERRAIN_WALL || tr == TERRAIN_WALL || bl == TERRAIN_WALL || br == TERRAIN_WALL) {
-        p->vel_x = -(p->vel_x >> 1); // Reverse and half speed
-        p->vel_y = -(p->vel_y >> 1);
-        
-        // Push car out of wall slightly to prevent sticking
-        p->x += p->vel_x; 
-        p->y += p->vel_y;
-
-        // SFX: Trigger OPL2 "Thud"
-        // play_opl2_sfx(SFX_CRASH);
-    } 
-    // 6. Handle Grass (Slowdown)
-    else if (tl == TERRAIN_GRASS || tr == TERRAIN_GRASS || bl == TERRAIN_GRASS || br == TERRAIN_GRASS) {
-        // Apply much heavier friction on grass
-        p->vel_x -= (p->vel_x >> 3); 
-        p->vel_y -= (p->vel_y >> 3);
+    // Simple collision: if destination collides, don't move there
+    if (check_collision_at_pos(new_x, new_y, p->angle) == TERRAIN_WALL) {
+        // Don't move - just bounce velocity
+        p->vel_x = -(p->vel_x >> 2);
+        p->vel_y = -(p->vel_y >> 2);
+    } else {
+        // No collision, apply movement
+        p->x = new_x;
+        p->y = new_y;
     }
 
-
-    // 7. Apply Velocity to Position
-    // Position is 24.8, Velocity is 8.8. They add together perfectly.
-    p->x += p->vel_x;
-    p->y += p->vel_y;
-
-    // 8. Clamp to world map bounds (512x384)
+    // 5. Clamp to world map bounds (512x384)
     // 512 in 8.8 is 512 * 256 = 131072 (0x20000)
     // 384 in 8.8 is 384 * 256 = 98304 (0x18000)
     if (p->x < 0) p->x = 0;
@@ -169,58 +158,42 @@ void draw_player(Car *p, int16_t screen_x, int16_t screen_y) {
 // We use the sin/cos values scaled by the LUT (127)
 // To get pixel offsets, we multiply by the distance and divide by 127 (shift 7)
 
-void check_collisions(Car *p) {
-    int16_t world_x = p->x >> 8;
-    int16_t world_y = p->y >> 8;
-
-    // Get the rotation components (reuse these from your update loop!)
-    int8_t s = SIN_LUT[p->angle];
-    int8_t c = SIN_LUT[(p->angle + 64) & 0xFF];
-
-    // --- 1. THE NOSE (6 pixels forward) ---
-    // In your coordinate system: Forward X = sin, Forward Y = -cos
-    int16_t nose_x = world_x + ((int16_t)s * 6 >> 7);
-    int16_t nose_y = world_y - ((int16_t)c * 6 >> 7);
-
-    // --- 2. REAR LEFT (-3 width, -5 length) ---
-    // We calculate this by combining the Forward vector and the "Side" vector
-    // Side Vector is just Forward rotated 90 degrees (c, s)
-    int16_t rl_x = world_x - ((int16_t)s * 5 >> 7) - ((int16_t)c * 3 >> 7);
-    int16_t rl_y = world_y + ((int16_t)c * 5 >> 7) - ((int16_t)s * 3 >> 7);
-
-    // --- 3. REAR RIGHT (+3 width, -5 length) ---
-    int16_t rr_x = world_x - ((int16_t)s * 5 >> 7) + ((int16_t)c * 3 >> 7);
-    int16_t rr_y = world_y + ((int16_t)c * 5 >> 7) + ((int16_t)s * 3 >> 7);
-
-    // Now check terrain at these three points
-    uint8_t terrain_nose = get_terrain_at(nose_x, nose_y);
-    uint8_t terrain_rl   = get_terrain_at(rl_x, rl_y);
-    uint8_t terrain_rr   = get_terrain_at(rr_x, rr_y);
-
-    // --- LOGIC ---
-    if (terrain_nose == TERRAIN_WALL) {
-        // Hit a wall head-on: Push back and bounce
-        // Move car back in opposite direction of velocity to get out of wall
-        int16_t push_dist = 8; // Push back 8 pixels
-        if (p->vel_x != 0 || p->vel_y != 0) {
-            // Calculate normalized push direction (opposite of velocity)
-            int16_t mag = (abs(p->vel_x) + abs(p->vel_y));
-            if (mag > 0) {
-                p->x -= ((int32_t)p->vel_x * push_dist * 256) / mag;
-                p->y -= ((int32_t)p->vel_y * push_dist * 256) / mag;
+// Helper function to check if any collision point hits a wall at given position/angle
+// Uses a solid rectangular hitbox - checks every pixel, no gaps
+static uint8_t check_collision_at_pos(int32_t x, int32_t y, uint8_t angle) {
+    (void)angle;  // Ignore rotation - use axis-aligned box
+    
+    int16_t cx = (x >> 8) + 8;  // Center of sprite
+    int16_t cy = (y >> 8) + 8;
+    
+    // Check a 6x6 square centered on the car (smaller than actual car for better feel)
+    // This is a solid hitbox - check every pixel
+    uint8_t found_grass = 0;
+    
+    for (int16_t dy = -3; dy <= 3; dy++) {
+        for (int16_t dx = -3; dx <= 3; dx++) {
+            uint8_t terrain = get_terrain_at(cx + dx, cy + dy);
+            if (terrain == TERRAIN_WALL) {
+                return TERRAIN_WALL;  // Any wall pixel = collision
+            }
+            if (terrain == TERRAIN_GRASS) {
+                found_grass = 1;
             }
         }
-        // Reverse and dampen velocity
-        p->vel_x = -(p->vel_x >> 1);
-        p->vel_y = -(p->vel_y >> 1);
-        // play_opl2_sfx(SFX_BUMP);
-    } 
+    }
     
-    // Slowdown logic: if any point is on grass, the car is slowed
-    if (terrain_nose == TERRAIN_GRASS || terrain_rl == TERRAIN_GRASS || terrain_rr == TERRAIN_GRASS) {
+    return found_grass ? TERRAIN_GRASS : TERRAIN_ROAD;
+}
+
+void check_collisions(Car *p) {
+    uint8_t terrain = check_collision_at_pos(p->x, p->y, p->angle);
+    
+    if (terrain == TERRAIN_GRASS) {
+        // Slowdown on grass
         p->vel_x -= (p->vel_x >> 4);
         p->vel_y -= (p->vel_y >> 4);
     }
+    // Wall collisions are now handled in update_player() before movement
 }
 
 void update_camera(Car *p) {
