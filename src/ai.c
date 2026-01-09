@@ -6,8 +6,8 @@
 #include <stdlib.h>
 
 #define AI_TURN_SPEED 3
-#define AI_MAX_ACCEL 1      // Full thrust scaler
-#define AI_REDUCED_ACCEL 2  // Reduced thrust scaler for turns
+#define AI_MAX_THRUST_SHIFT 4      // Full thrust (smaller = more power)
+#define AI_REDUCED_THRUST_SHIFT 5  // Reduced thrust for turns
 
 // Calculate the shortest way to turn from current_angle to target_angle
 static void ai_steer_toward(AICar *ai, uint8_t target_angle) {
@@ -122,38 +122,38 @@ void update_ai(void) {
         int8_t forward_x = -SIN_LUT[ai->car.angle];  // cos component
         int8_t forward_y = -SIN_LUT[(ai->car.angle + 64) & 0xFF];  // sin component
         
-        // Target vector (already calculated as dx, dy)
-        
         // Cross product: (f_x * t_y) - (f_y * t_x)
+        // This tells us if waypoint is to the left or right of our forward direction
         int32_t cross = ((int32_t)forward_x * dy) - ((int32_t)forward_y * dx);
         
-        // Determine target angle based on cross product
-        uint8_t target_angle;
-        if (cross > 0) {
-            // Turn right (clockwise)
-            target_angle = ai->car.angle + 1;
-        } else if (cross < 0) {
-            // Turn left (counter-clockwise)
-            target_angle = ai->car.angle - 1;
-        } else {
-            // Straight ahead
-            target_angle = ai->car.angle;
+        // Dot product to determine if waypoint is ahead or behind
+        // (f_x * t_x) + (f_y * t_y)
+        int32_t dot = ((int32_t)forward_x * dx) + ((int32_t)forward_y * dy);
+        
+        // Only steer if waypoint is generally ahead of us
+        if (dot > 0) {
+            // Waypoint is ahead - steer toward it
+            if (cross > 100) {
+                // Waypoint is significantly to the right
+                ai->car.angle += AI_TURN_SPEED;
+            } else if (cross < -100) {
+                // Waypoint is significantly to the left
+                ai->car.angle -= AI_TURN_SPEED;
+            }
+            // else: waypoint is roughly ahead, go straight
         }
         
-        // Steer toward target using wrap-around logic
-        ai_steer_toward(ai, target_angle);
+        // Calculate how aligned we are with waypoint for throttle control
+        // Use absolute value of cross product as measure of misalignment
+        int32_t abs_cross = (cross < 0) ? -cross : cross;
         
-        // Calculate absolute angle difference for throttle control
-        uint8_t angle_diff = target_angle - ai->car.angle;
-        if (angle_diff > 128) angle_diff = 256 - angle_diff;
-        
-        // AI brake logic - adjust thrust based on turn sharpness
-        if (angle_diff > 32) {
-            // Sharp turn! Use reduced acceleration
-            ai_apply_thrust(ai, AI_REDUCED_ACCEL);
+        // AI brake logic - adjust thrust based on alignment
+        if (abs_cross > 5000) {
+            // Sharp turn needed! Use reduced acceleration
+            ai_apply_thrust(ai, AI_REDUCED_THRUST_SHIFT);
         } else {
-            // Straight line! Full speed
-            ai_apply_thrust(ai, AI_MAX_ACCEL);
+            // Roughly aligned! Full speed
+            ai_apply_thrust(ai, AI_MAX_THRUST_SHIFT);
         }
         
         // Apply friction
