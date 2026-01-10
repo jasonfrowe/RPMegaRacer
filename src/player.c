@@ -71,10 +71,7 @@ const int16_t TY_LUT[256] = {
 };
 
 // Track last known position for stuck detection
-static uint16_t player_last_x = 0;
-static uint16_t player_last_y = 0;
 uint8_t rebound_timer = 0;
-static uint16_t player_stuck_timer = 0;
 
 void rescue_player(Car *p) {
     p->x = 245 << 6;  // Starting X
@@ -83,7 +80,6 @@ void rescue_player(Car *p) {
     p->vel_y = 0;
     p->angle = 64;    // Facing Left
     rebound_timer = 0;
-    player_stuck_timer = 0;
 }
 
 void init_player(void) {
@@ -99,7 +95,7 @@ void init_player(void) {
 
 // Tuning constants
 #define BOUNCE_IMPULSE 0x080  // 8.8 value
-#define PUSH_OUT_10_6  0x018  // ~0.4 pixels in 10.6 math (0.4 * 64)
+#define PUSH_OUT_10_6  0x040  // ~0.5 pixels in 10.6 math (0.5 * 64)
 #define REBOUND_STUN   4
 
 // OPTIMIZED: Checks 4 corners using 16-bit pixel coordinates
@@ -249,18 +245,21 @@ void update_lap_logic(Car *p, bool is_player) {
     switch (p->next_checkpoint) {
         case 1: // CP1 gate: tx [4..10], ty 30
             if (ty == 30 && tx >= 4 && tx <= 10) {
+                // printf("CP1 Triggered at tx=%d, ty=%d\n", tx, ty);
                 p->next_checkpoint = 2;
             }
             break;
 
         case 2: // CP2 gate: tx 31, ty [36..42]
             if (tx == 31 && ty >= 36 && ty <= 42) {
+                // printf("CP2 Triggered at tx=%d, ty=%d\n", tx, ty);
                 p->next_checkpoint = 3;
             }
             break;
 
         case 3: // CP3 gate: tx [52..58], ty 17
             if (ty == 17 && tx >= 52 && tx <= 58) {
+                // printf("CP3 Triggered at tx=%d, ty=%d\n", tx, ty);
                 p->next_checkpoint = 0; // Next is the Finish Line
             }
             break;
