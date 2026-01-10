@@ -30,7 +30,6 @@ extern const int16_t TY_LUT[256];
 extern void init_player(void);
 extern void update_player(Car *p);
 extern void draw_player(Car *p, int16_t screen_x, int16_t screen_y);
-extern void check_collisions(Car *p);
 extern void update_camera(Car *p);
 extern void update_lap_logic(Car *p, bool is_player);
 extern uint8_t is_colliding_fast(int16_t px, int16_t py);

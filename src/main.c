@@ -9,11 +9,15 @@
 #include "sound.h"
 #include "ai.h"
 #include "collision.h"
+#include "hud.h"
 
-unsigned REDRACER_CONFIG;   // RedRacer Sprite Configuration
-unsigned TRACK_MAP_START;   // Start of track map data in XRAM
-unsigned TRACK_MAP_END;     // End of track map data in XRAM
+unsigned REDRACER_CONFIG;    // RedRacer Sprite Configuration
+unsigned TRACK_MAP_START;    // Start of track map data in XRAM
+unsigned TRACK_MAP_END;      // End of track map data in XRAM
 unsigned TRACK_CONFIG;       // Track tilemap configuration
+unsigned TEXT_CONFIG;        // Text overlay configuration
+unsigned text_message_addr;  // Start address for text messages in XRAM
+unsigned text_storage_end;   // End address for text messages in XRAM
 
 static void init_graphics(void)
 {
@@ -97,7 +101,7 @@ static void init_graphics(void)
         // printf("%02X ", world_map[i]);
     }
 
-    TRACK_CONFIG = TRACK_MAP_END;
+    TRACK_CONFIG = TRACK_DATA_END;
 
     int16_t cam_x = 260 - 160; // 100
     int16_t cam_y = 60 - 120;  // -60 (will be clamped to 0)
@@ -119,10 +123,43 @@ static void init_graphics(void)
 
     xregn(1, 0, 1, 4, 2, 0x02, TRACK_CONFIG, 0); // Enable sprited tilemap
 
+    TEXT_CONFIG = TRACK_CONFIG + sizeof(vga_mode2_config_t);
+    text_message_addr = TEXT_CONFIG + sizeof(vga_mode1_config_t);
+    const unsigned bytes_per_char = 3; // we write 3 bytes per character into text RAM
+    unsigned text_storage_end = text_message_addr + MESSAGE_LENGTH * bytes_per_char;
+
+    xram0_struct_set(TEXT_CONFIG, vga_mode1_config_t, x_wrap, 0);
+    xram0_struct_set(TEXT_CONFIG, vga_mode1_config_t, y_wrap, 0);
+    xram0_struct_set(TEXT_CONFIG, vga_mode1_config_t, x_pos_px, 0); //Bug: first char duplicated if not set to zero
+    xram0_struct_set(TEXT_CONFIG, vga_mode1_config_t, y_pos_px, 5);
+    xram0_struct_set(TEXT_CONFIG, vga_mode1_config_t, width_chars, MESSAGE_WIDTH);
+    xram0_struct_set(TEXT_CONFIG, vga_mode1_config_t, height_chars, MESSAGE_HEIGHT);
+    xram0_struct_set(TEXT_CONFIG, vga_mode1_config_t, xram_data_ptr, text_message_addr);
+    xram0_struct_set(TEXT_CONFIG, vga_mode1_config_t, xram_palette_ptr, 0xFFFF);
+    xram0_struct_set(TEXT_CONFIG, vga_mode1_config_t, xram_font_ptr, 0xFFFF);
+
+    // 4 parameters: text mode, 8-bit, config, plane
+    xregn(1, 0, 1, 4, 1, 3, TEXT_CONFIG, 2);
+
+    // Clear message buffer to spaces
+    for (int i = 0; i < MESSAGE_LENGTH; ++i) message[i] = ' ';
+
+    // Now write the MESSAGE_LENGTH characters into text RAM (3 bytes per char)
+    RIA.addr0 = text_message_addr;
+    RIA.step0 = 1;
+    for (uint16_t i = 0; i < MESSAGE_LENGTH; i++) {
+        RIA.rw0 = ' ';
+        RIA.rw0 = HUD_COL_WHITE;
+        RIA.rw0 = HUD_COL_BG;
+    }
+
 
     printf("Redracer Data at 0x%04X\n", REDRACER_DATA);
     printf("Redracer Config at 0x%04X\n", REDRACER_CONFIG);
     printf("Track Map at 0x%04X - 0x%04X\n", TRACK_MAP_START, TRACK_MAP_END);
+    printf("Track Config at 0x%04X\n", TRACK_CONFIG);
+    printf("Text Config at 0x%04X\n", TEXT_CONFIG);
+    printf("Text Messages at 0x%04X - 0x%04X\n", text_message_addr, text_storage_end);
     printf("OPL Config = 0x%X\n", OPL_ADDR);
     printf("GAME_PAD_CONFIG=0x%X\n", GAMEPAD_INPUT);
     printf("KEYBOARD_CONFIG=0x%X\n", KEYBOARD_INPUT);

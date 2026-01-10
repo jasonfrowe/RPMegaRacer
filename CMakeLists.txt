@@ -39,4 +39,5 @@ target_sources(RPMegaRacer PRIVATE
     src/sound.c
     src/ai.c
     src/collision.c
+    src/hud.c
 )

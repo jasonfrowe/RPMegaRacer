@@ -19,7 +19,9 @@
 // 0x1450-0x3370: Tile graphics
 
 // Tile data configuration
-#define TRACK_DATA              0x1450U // Address for track tile data in XRAM
+#define TRACK_DATA              0x1450U // Address for track tile data in 
+#define TRACK_DATA_SIZE         0x1F20U // Size of track tile data (7968 bytes)
+#define TRACK_DATA_END          (TRACK_DATA + TRACK_DATA_SIZE)
 
 // 5. Keyboard, Gamepad and Sound
 // -------------------------------------------------------------------------
