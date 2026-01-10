@@ -85,7 +85,7 @@ AICar ai_cars[NUM_AI_CARS];
 
 // Track waypoints - racing line coordinates
 Waypoint waypoints[NUM_WAYPOINTS] = {
-    {255, 60},   // 0: Top-Middle (Start/Finish)
+    {255, 60},   // 0: Start/Finish
     {120, 50},   // 1: Top-Right Entry
     {91, 84},    // 2: Top-Right Apex
     {60, 192},   // 3: Right-Side Mid
@@ -94,8 +94,8 @@ Waypoint waypoints[NUM_WAYPOINTS] = {
     {247, 315},  // 6: Bottom-Middle
     {375, 328},  // 7: Bottom-Left Entry
     {431, 295},  // 8: Bottom-Left Apex
-    {446, 175},  // 9: Left-Side Mid
-    {453, 116},  // 10: Top-Left Entry
+    {435, 175},  // 9: Left-Side Mid
+    {445, 116},  // 10: Top-Left Entry
     {417, 80}    // 11: Top-Left Apex
 };
 
@@ -117,6 +117,8 @@ void init_ai(void) {
         ai_cars[i].sprite_index = i + 1;  // Sprites 1, 2, 3 (player is 0)
         ai_cars[i].startup_delay = 600;  // 10 seconds at 60fps
         ai_cars[i].stuck_timer = 0;  // Not stuck initially
+        ai_cars[i].recovery_timer = 0;
+        ai_cars[i].recovery_turn_dir = 1;
     }
 }
 
@@ -161,43 +163,52 @@ void update_ai(void) {
             dy = target_y - car_y;
         }
         
-        // Detect if stuck: low speed + collision
-        int16_t speed_sq = (ai->car.vel_x >> 8) * (ai->car.vel_x >> 8) + 
-                          (ai->car.vel_y >> 8) * (ai->car.vel_y >> 8);
+        // --- RECOVERY STATE MACHINE ---
+        // Check current state: speed and wall collision
+        int16_t abs_vel_x = (ai->car.vel_x >> 8);
+        int16_t abs_vel_y = (ai->car.vel_y >> 8);
+        if (abs_vel_x < 0) abs_vel_x = -abs_vel_x;
+        if (abs_vel_y < 0) abs_vel_y = -abs_vel_y;
+        uint16_t speed = abs_vel_x + abs_vel_y;
+        uint8_t terrain = check_collision_at_pos(ai->car.x, ai->car.y, ai->car.angle);
         
-        extern uint8_t check_collision_at_pos(int32_t x, int32_t y, uint8_t angle);
-        uint8_t is_colliding = (check_collision_at_pos(ai->car.x, ai->car.y, ai->car.angle) == TERRAIN_WALL);
-        
-        if (is_colliding && speed_sq < 4) {
-            // Car is stuck against wall with low speed
-            ai->stuck_timer++;
+        if (ai->recovery_timer > 0) {
+            // IN RECOVERY MODE: Directly move car to escape wall
+            ai->recovery_timer--;
             
-            if (ai->stuck_timer > 30) {  // Stuck for half a second
-                // Recovery mode: turn toward track center (256, 192)
-                int16_t center_dx = 256 - car_x;
-                int16_t center_dy = 192 - car_y;
-                
-                uint8_t center_angle_std = atan2_8(center_dy, center_dx);
-                uint8_t target_angle = (192 - center_angle_std) & 0xFF;
-                
-                // Force turn toward center
-                ai_steer(ai, target_angle);
-                
-                // Apply thrust to get unstuck
-                ai_apply_thrust(ai, AI_MAX_THRUST_SHIFT);
-                
-                // Reset stuck timer after some recovery attempts
-                if (ai->stuck_timer > 60) {
-                    ai->stuck_timer = 0;
-                }
-            }
+            // Turn in chosen direction
+            ai->car.angle += AI_TURN_SPEED * ai->recovery_turn_dir;
+            
+            // Directly move car backwards (ignore collision!)
+            // This is the only way to escape when pressed against a wall
+            extern const int8_t SIN_LUT[256];
+            int8_t s = SIN_LUT[ai->car.angle];
+            int8_t c = SIN_LUT[(ai->car.angle + 64) & 0xFF];
+            
+            // Move position directly (not velocity) - 1 pixel per frame backwards
+            ai->car.x += (int32_t)s << 5;  // ~0.5 pixel per frame
+            ai->car.y += (int32_t)c << 5;
+            
+            // Kill velocity during recovery
+            ai->car.vel_x = 0;
+            ai->car.vel_y = 0;
+            
+            // Recovery ends when timer hits 0
+            
         } else {
-            // Not stuck, reset timer
-            ai->stuck_timer = 0;
-        }
-        
-        // Normal navigation (skip if in stuck recovery mode)
-        if (ai->stuck_timer == 0) {
+            // NORMAL MODE: Check if we're getting stuck
+            uint8_t is_stuck = (speed < 2 && terrain == TERRAIN_WALL);
+            
+            if (is_stuck) {
+                ai->stuck_timer++;
+                if (ai->stuck_timer > 20) {  // Stuck for 20 frames
+                    ai->recovery_timer = 45;  // Fixed 45 frame recovery
+                    ai->stuck_timer = 0;
+                    ai->recovery_turn_dir = (rand() & 1) ? 1 : -1;
+                }
+            } else {
+                ai->stuck_timer = 0;
+            }
             // Calculate target angle using standard atan2
             // 1. Get standard atan2 (0=Right, 64=Down, 128=Left, 192=Up)
             uint8_t standard_angle = atan2_8(dy, dx);
@@ -221,9 +232,9 @@ void update_ai(void) {
                 // Roughly aligned! Full speed
                 ai_apply_thrust(ai, AI_MAX_THRUST_SHIFT);
             }
-        }
+        }  // End of normal mode else block
         
-        // Apply friction
+        // Apply friction (always, both normal and recovery)
         int16_t drag_x = (ai->car.vel_x >> FRICTION_SHIFT);
         int16_t drag_y = (ai->car.vel_y >> FRICTION_SHIFT);
         
