@@ -102,7 +102,7 @@ Waypoint waypoints[NUM_WAYPOINTS] = {
 void init_ai(void) {
     // Starting positions on the grid, left of starting line (X=255)
     // Spread across track width (Y=33 to Y=86)
-    int16_t start_positions[NUM_AI_CARS] = {40, 52, 64};  // Y positions (front to back)
+    int16_t start_positions[NUM_AI_CARS] = {40, 50, 60};  // Y positions (front to back)
     
     for (uint8_t i = 0; i < NUM_AI_CARS; i++) {
         ai_cars[i].car.x = 245L << 8;  // X = 245, left of starting line (8.8 fixed point)

@@ -43,7 +43,7 @@ void init_player(void) {
     // Initialize player car position and velocity
     // Starting position: back of grid, left of starting line
     car.x = 245L << 8;  // Left of starting line at X=255
-    car.y = 76L << 8;   // Back position in track width (Y=33-86)
+    car.y = 70L << 8;   // Back position in track width (Y=33-86)
     car.vel_x = 0;
     car.vel_y = 0;
     car.angle = 64; // Facing Left (West, 0=Up, 64=Left, 128=Down)
