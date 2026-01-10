@@ -5,6 +5,9 @@
 #define TERRAIN_GRASS 1
 #define TERRAIN_WALL  2
 #define TERRAIN_BOOST 3
+#define TERRAIN_FINISH  3  // Checkpoint 0
+#define TERRAIN_CP1     4  // Checkpoint 1
+#define TERRAIN_CP2     5  // Checkpoint 2
 
 extern uint8_t world_map[3072];
 extern uint8_t tile_properties[256];

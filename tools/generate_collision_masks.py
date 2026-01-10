@@ -2,8 +2,8 @@
 """
 Generate collision masks from Track_A_tiles.bin
 
-Road colors: 1, 2, 10, 11 (passable)
-Grass colors: 8 (passable)
+Road colors: 1, 2 (passable)
+Grass colors: 3, 8 (passable)
 Barrier colors: everything else (solid)
 
 Output: C code for tile_collision_masks array

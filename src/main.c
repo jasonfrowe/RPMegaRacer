@@ -242,6 +242,12 @@ int main(void) {
         update_player(&car);
         update_ai();
         resolve_all_collisions();
+
+        // Process lap logic
+        update_lap_logic(&car, true);
+        for (int i = 0; i < NUM_AI_CARS; i++) {
+            update_lap_logic(&ai_cars[i].car, false);
+        }
         
         // 5. POST-PROCESS (Camera & UI)
         update_camera_and_ui();

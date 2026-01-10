@@ -56,6 +56,6 @@ This is the heart of your "Mega" version.
     - Collected Wrenches/Points.
 
 ### Phase 7: Optimization & Polish
-- [ ] **Affine Sprite Benchmarking:** If using the RIA's hardware rotation, test how many 16x16 affine sprites you can draw before the scanline limit is hit. 
+- [x] **Affine Sprite Benchmarking:** If using the RIA's hardware rotation, test how many 16x16 affine sprites you can draw before the scanline limit is hit. 
 - [ ] **Sprite-to-Sprite Collision:** Basic circle-based collision so cars can bump each other off-course.
 - [ ] **Visual Juice:** Add small "smoke" or "dust" sprites that spawn behind cars when they drift or drive on dirt.

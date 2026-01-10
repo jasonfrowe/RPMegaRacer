@@ -84,18 +84,8 @@ void update_ai(void) {
             continue;
         }
 
-        // --- 1. RECOVERY & TIMERS (Every Frame) ---
-        if (ai->recovery_timer > 0) {
-            ai->recovery_timer--;
-            int8_t s = SIN_LUT[ai->car.angle];
-            int8_t c = SIN_LUT[(ai->car.angle + 64) & 0xFF];
-            // Update position (8.8 to 10.6 alignment: >> 2)
-            ai->car.x += (int16_t)s >> 6;  // Reverse nudge
-            ai->car.y += (int16_t)c >> 6;
-            ai->car.angle += 4 * ai->recovery_turn_dir;
-            continue; 
-        }
-
+        // --- 1. REBOUND TIMER (Every Frame) ---
+        // We keep this so they still "stun" when hitting things
         if (ai->rebound_timer > 0) ai->rebound_timer--;
 
         // --- 2. BRAIN (1 of 3 cars per frame) ---
@@ -103,21 +93,38 @@ void update_ai(void) {
             int16_t car_px_x = ai->car.x >> 6;
             int16_t car_px_y = ai->car.y >> 6;
 
-            // STUCK DETECTION
+            // --- STUCK DETECTION & RESCUE ---
             ai->stuck_timer++;
             if (ai->stuck_timer >= 30) {
                 ai->stuck_timer = 0;
+                
+                // If the car moved less than 3 pixels in the last 30 frames
                 if (abs(car_px_x - ai->last_recorded_x) < 3 && abs(car_px_y - ai->last_recorded_y) < 3) {
-                    ai->recovery_timer = 45;
-                    ai->recovery_turn_dir = (rand() & 1) ? 1 : -1;
+                    
+                    // --- RESCUE TELEPORT ---
+                    // Find the waypoint they just came from
+                    uint8_t prev_wp = (ai->current_waypoint == 0) ? (NUM_WAYPOINTS - 1) : (ai->current_waypoint - 1);
+                    
+                    // Snap to the center of the previous waypoint
+                    ai->car.x = (uint16_t)waypoints[prev_wp].x << 6;
+                    ai->car.y = (uint16_t)waypoints[prev_wp].y << 6;
+                    
+                    // Reset physics so they don't carry "wall-stuck" velocity to the new spot
+                    ai->car.vel_x = 0;
+                    ai->car.vel_y = 0;
+                    ai->rebound_timer = 0;
                 }
+                
+                // Update tracker for the next check
                 ai->last_recorded_x = car_px_x;
                 ai->last_recorded_y = car_px_y;
             }
 
-            // WAYPOINTS
+            // --- WAYPOINT UPDATING ---
             int16_t dx = waypoints[ai->current_waypoint].x + ai->offset_x - car_px_x;
             int16_t dy = waypoints[ai->current_waypoint].y + ai->offset_y - car_px_y;
+            
+            // Manhattan distance for VSync speed
             if ((abs(dx) + abs(dy)) < 50) {
                 ai->current_waypoint = (ai->current_waypoint + 1) % NUM_WAYPOINTS;
             }
@@ -128,7 +135,7 @@ void update_ai(void) {
         }
 
         // --- 3. PHYSICS (Every Frame) ---
-        // Turn
+        // Turn toward target
         uint8_t diff = ai->target_angle - ai->car.angle;
         if (diff != 0) {
             if (diff < 128) ai->car.angle += AI_TURN_SPEED;
@@ -150,26 +157,26 @@ void update_ai(void) {
         if (dvy == 0 && ai->car.vel_y != 0) dvy = (ai->car.vel_y > 0) ? 1 : -1;
         ai->car.vel_x -= dvx; ai->car.vel_y -= dvy;
 
-        // Optimized 16-bit movement (X then Y)
-        int16_t cur_px_x = ai->car.x >> 6;
-        int16_t cur_px_y = ai->car.y >> 6;
+        // --- 4. MOVEMENT & WALL COLLISION ---
+        int16_t px = (int16_t)(ai->car.x >> 6);
+        int16_t py = (int16_t)(ai->car.y >> 6);
 
         if (ai->car.vel_x != 0) {
             int16_t dx_10_6 = ai->car.vel_x >> 2;
-            int16_t next_px_x = (ai->car.x + dx_10_6) >> 6;
-            if (is_colliding_ai(next_px_x, cur_px_y)) {
+            int16_t nx = (int16_t)((ai->car.x + dx_10_6) >> 6);
+            if (is_colliding_ai(nx, py)) {
                 ai->car.vel_x = (ai->car.vel_x > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
                 ai->car.x += (ai->car.vel_x > 0 ? PUSH_OUT_10_6 : -PUSH_OUT_10_6);
                 ai->rebound_timer = REBOUND_STUN;
             } else {
                 ai->car.x += dx_10_6;
-                cur_px_x = next_px_x;
+                px = nx;
             }
         }
         if (ai->car.vel_y != 0) {
             int16_t dy_10_6 = ai->car.vel_y >> 2;
-            int16_t next_px_y = (ai->car.y + dy_10_6) >> 6;
-            if (is_colliding_ai(cur_px_x, next_px_y)) {
+            int16_t ny = (int16_t)((ai->car.y + dy_10_6) >> 6);
+            if (is_colliding_ai(px, ny)) {
                 ai->car.vel_y = (ai->car.vel_y > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
                 ai->car.y += (ai->car.vel_y > 0 ? PUSH_OUT_10_6 : -PUSH_OUT_10_6);
                 ai->rebound_timer = REBOUND_STUN;
@@ -178,11 +185,11 @@ void update_ai(void) {
             }
         }
 
-        // Clamp world bounds (10.6)
-        if (ai->car.x < 0x200) ai->car.x = 0x200; // 8px * 64
-        if (ai->car.x > 32768 - 0x200) ai->car.x = 32768 - 0x200; // 512 * 64
+        // Clamp world bounds (10.6: 512*64 = 32768, 384*64 = 24576)
+        if (ai->car.x < 0x200) ai->car.x = 0x200;
+        if (ai->car.x > 32768 - 0x200) ai->car.x = 32768 - 0x200;
         if (ai->car.y < 0x200) ai->car.y = 0x200;
-        if (ai->car.y > 24576 - 0x200) ai->car.y = 24576 - 0x200; // 384 * 64
+        if (ai->car.y > 24576 - 0x200) ai->car.y = 24576 - 0x200;
     }
 }
 

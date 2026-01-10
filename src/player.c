@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include "track.h"
 #include "sound.h"
+#include <stdio.h>
 
 // External Sin table
 extern const int8_t SIN_LUT[256];
@@ -69,6 +70,22 @@ const int16_t TY_LUT[256] = {
       944,   880,   816,   752,   688,   624,   560,   512,   448,   384,   336,   272,   224,   176,   128,    80,
 };
 
+// Track last known position for stuck detection
+static uint16_t player_last_x = 0;
+static uint16_t player_last_y = 0;
+uint8_t rebound_timer = 0;
+static uint16_t player_stuck_timer = 0;
+
+void rescue_player(Car *p) {
+    p->x = 245 << 6;  // Starting X
+    p->y = 70 << 6;   // Starting Y
+    p->vel_x = 0;
+    p->vel_y = 0;
+    p->angle = 64;    // Facing Left
+    rebound_timer = 0;
+    player_stuck_timer = 0;
+}
+
 void init_player(void) {
     // 245 pixels in 10.6 is 245 << 6
     car.x = 245 << 6;  
@@ -76,9 +93,9 @@ void init_player(void) {
     car.vel_x = 0;
     car.vel_y = 0;
     car.angle = 64; 
+    car.laps = 0;
+    car.next_checkpoint = 1; // They've started, looking for CP1
 }
-
-uint8_t rebound_timer = 0;
 
 // Tuning constants
 #define BOUNCE_IMPULSE 0x080  // 8.8 value
@@ -107,6 +124,13 @@ static uint8_t is_colliding_fast(int16_t px, int16_t py) {
 }
 
 void update_player(Car *p) {
+
+    // --- 1. MANUAL RESCUE TRIGGER ---
+    if (is_action_pressed(0, ACTION_PAUSE)) {
+        rescue_player(p);
+        return; 
+    }
+
     // 1. Rotation
     if (is_action_pressed(0, ACTION_ROTATE_LEFT)) p->angle += TURN_SPEED;
     if (is_action_pressed(0, ACTION_ROTATE_RIGHT)) p->angle -= TURN_SPEED;
@@ -213,4 +237,45 @@ void update_camera(Car *p) {
     extern int16_t next_scroll_x, next_scroll_y;
     next_scroll_x = target_x;
     next_scroll_y = target_y;
+}
+
+void update_lap_logic(Car *p, bool is_player) {
+    // 1. Convert 10.6 world position to Tile Coordinates (8x8 tiles)
+    // We check the center of the car (+8 pixels)
+    uint8_t tx = ((p->x >> 6) + 8) >> 3;
+    uint8_t ty = ((p->y >> 6) + 8) >> 3;
+
+    // 2. State Machine for Checkpoints
+    switch (p->next_checkpoint) {
+        case 1: // CP1 gate: tx [4..10], ty 30
+            if (ty == 30 && tx >= 4 && tx <= 10) {
+                p->next_checkpoint = 2;
+            }
+            break;
+
+        case 2: // CP2 gate: tx 31, ty [36..42]
+            if (tx == 31 && ty >= 36 && ty <= 42) {
+                p->next_checkpoint = 3;
+            }
+            break;
+
+        case 3: // CP3 gate: tx [52..58], ty 17
+            if (ty == 17 && tx >= 52 && tx <= 58) {
+                p->next_checkpoint = 0; // Next is the Finish Line
+            }
+            break;
+
+        case 0: // Finish Line gate: tx 31, ty [4..10]
+            if (tx == 31 && ty >= 4 && ty <= 10) {
+                p->laps++;
+                p->next_checkpoint = 1; // Loop back to CP1
+                
+                if (is_player) {
+                    // Visual feedback: Print to Console Plane (free VSync-wise)
+                    printf("\x1b[1;2H LAP: %d/3 ", p->laps + 1);
+                    // play_psg_lap_ding();
+                }
+            }
+            break;
+    }
 }
