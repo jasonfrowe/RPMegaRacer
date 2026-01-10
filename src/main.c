@@ -8,6 +8,7 @@
 #include "track.h"
 #include "sound.h"
 #include "ai.h"
+#include "collision.h"
 
 unsigned REDRACER_CONFIG;   // RedRacer Sprite Configuration
 unsigned TRACK_MAP_START;   // Start of track map data in XRAM
@@ -197,8 +198,16 @@ int main(void)
         // Update AI cars
         update_ai();
 
-        // Check collisions
-        // check_collisions(&car);
+        // --- RESOLVE CAR COLLISIONS ---
+        // 1. Player vs all 3 AI
+        resolve_car_collision(&car, &ai_cars[0].car);
+        resolve_car_collision(&car, &ai_cars[1].car);
+        resolve_car_collision(&car, &ai_cars[2].car);
+
+        // 2. AI vs each other
+        resolve_car_collision(&ai_cars[0].car, &ai_cars[1].car);
+        resolve_car_collision(&ai_cars[0].car, &ai_cars[2].car);
+        resolve_car_collision(&ai_cars[1].car, &ai_cars[2].car);
 
         // Camera system with deadzone - only scroll when car gets near edges
         int16_t car_px_x = car.x >> 8;
