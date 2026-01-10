@@ -88,13 +88,13 @@ void update_player(Car *p) {
     if (rebound_timer > 0) {
         rebound_timer--;
     } else {
-        if (is_action_pressed(0, ACTION_THRUST)) {
+        if (is_action_pressed(0, ACTION_FIRE)) {
             p->vel_x -= (int16_t)s >> THRUST_SCALER;
             p->vel_y -= (int16_t)c >> THRUST_SCALER;
         }
 
         // Handle Reverse Thrust (backing up)
-        if (is_action_pressed(0, ACTION_REVERSE_THRUST)) {
+        if (is_action_pressed(0, ACTION_SUPER_FIRE)) {
             // Opposite direction of thrust, slightly weaker
             p->vel_x += (int16_t)s >> (THRUST_SCALER + 1);
             p->vel_y += (int16_t)c >> (THRUST_SCALER + 1);

@@ -176,8 +176,6 @@ int main(void)
         xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, x_pos_px, next_scroll_x);
         xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, y_pos_px, next_scroll_y);
 
-        
-
         // --- 2. DRIVE MUSIC ---
         // This math allows any SONG_HZ to work on a 60Hz VSync
         if (music_enabled) {

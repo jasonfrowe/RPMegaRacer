@@ -2,64 +2,57 @@
 #include <stdlib.h>
 #include "player.h"
 #include "ai.h"
+#include "track.h"
 
-// Threshold: Cars are 16x16. 
-// A distance of 10 pixels squared (100) is a good "sweet spot" for bumping.
-#define CAR_COL_DIST_SQ 100 
-#define CAR_PUSH_FORCE 0x160 // 1.0 pixel nudge
+#define CAR_PUSH_FORCE 0x080 // 2.0 pixels (Stronger push)
+#define IMPACT_SPIN 16       // Large angle jerk (approx 45 degrees)
 
 void resolve_car_collision(Car *c1, Car *c2) {
-    // 1. Get pixel coordinates
-    int16_t x1 = c1->x >> 8;
-    int16_t y1 = c1->y >> 8;
-    int16_t x2 = c2->x >> 8;
-    int16_t y2 = c2->y >> 8;
-
-    // 2. Quick Manhattan distance check (Optimization for 6502)
-    int16_t dx = x2 - x1;
-    int16_t dy = y2 - y1;
+    int16_t dx = (c2->x >> 8) - (c1->x >> 8);
+    int16_t dy = (c2->y >> 8) - (c1->y >> 8);
+    
+    // Quick Manhattan exit
     if (abs(dx) > 12 || abs(dy) > 12) return;
 
-    // 3. Precise distance squared check
     uint16_t dist_sq = (dx * dx) + (dy * dy);
 
-    if (dist_sq < CAR_COL_DIST_SQ && dist_sq > 0) {
-        // --- WE HAVE A HIT ---
-
-        // Randomly nudge their angles slightly on impact
-        c1->angle += (rand() % 5) - 2;
-        c2->angle += (rand() % 5) - 2;
-
-        // A. MOMENTUM SWAP (Arcade Style)
-        // This makes them "bounce" off each other by exchanging velocities
+    if (dist_sq < 100 && dist_sq > 0) {
+        // --- 1. MOMENTUM SWAP ---
         int16_t temp_vx = c1->vel_x;
         int16_t temp_vy = c1->vel_y;
+        c1->vel_x = c2->vel_x;
+        c1->vel_y = c2->vel_y;
+        c2->vel_x = temp_vx;
+        c2->vel_y = temp_vy;
 
-        // Dampen the swap slightly so they don't fly off too wildly
-        c1->vel_x = c2->vel_x >> 1;
-        c1->vel_y = c2->vel_y >> 1;
-        c2->vel_x = temp_vx >> 1;
-        c2->vel_y = temp_vy >> 1;
+        // --- 2. THE SPIN ---
+        c1->angle += (rand() % (IMPACT_SPIN * 2)) - IMPACT_SPIN;
+        c2->angle += (rand() % (IMPACT_SPIN * 2)) - IMPACT_SPIN;
 
-        // B. POSITIONAL NUDGE (Anti-fusing)
-        // Physically push them apart so they don't get stuck inside each other
-        if (dx > 0) {
-            c1->x -= CAR_PUSH_FORCE;
-            c2->x += CAR_PUSH_FORCE;
-        } else {
-            c1->x += CAR_PUSH_FORCE;
-            c2->x -= CAR_PUSH_FORCE;
+        // --- 3. WALL-AWARE PHYSICAL SEPARATION ---
+        // We only nudge if the destination is NOT a wall.
+        // This prevents being flung into or through barriers.
+        
+        int16_t push_x = (dx > 0) ? -CAR_PUSH_FORCE : CAR_PUSH_FORCE;
+        int16_t push_y = (dy > 0) ? -CAR_PUSH_FORCE : CAR_PUSH_FORCE;
+
+        // Check C1: Would the push put C1 in a wall?
+        if (get_terrain_at(((c1->x + push_x) >> 8) + 8, ((c1->y + push_y) >> 8) + 8) != TERRAIN_WALL) {
+            c1->x += push_x;
+            c1->y += push_y;
         }
 
-        if (dy > 0) {
-            c1->y -= CAR_PUSH_FORCE;
-            c2->y += CAR_PUSH_FORCE;
-        } else {
-            c1->y += CAR_PUSH_FORCE;
-            c2->y -= CAR_PUSH_FORCE;
+        // Check C2: Would the push put C2 in a wall?
+        if (get_terrain_at(((c2->x - push_x) >> 8) + 8, ((c2->y - push_y) >> 8) + 8) != TERRAIN_WALL) {
+            c2->x -= push_x;
+            c2->y -= push_y;
         }
 
-        // C. Trigger SFX (PSG Crunch/Clink)
-        // play_psg_bump(); 
+        // --- 4. TRIGGER STUN ---
+        // Force the cars into the "rebound" state so they can't 
+        // immediately drive back into each other.
+        // Assuming you add rebound_timer to the AICar struct as well:
+        extern uint8_t rebound_timer; 
+        rebound_timer = 10; // Stun the player
     }
 }
