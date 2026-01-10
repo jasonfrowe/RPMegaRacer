@@ -29,6 +29,8 @@ typedef struct {
     int16_t last_recorded_x;   // Position 30 frames ago (for stuck detection)
     int16_t last_recorded_y;
     uint8_t rebound_timer;
+    uint8_t target_angle;      // Stored decision
+    uint8_t last_thrust_shift; // Stored decision
 } AICar;
 
 // External declarations

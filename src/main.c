@@ -58,8 +58,8 @@ static void init_graphics(void)
     xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, transform[4], 256); // SY  (Scale Y)
     xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, transform[5], 0);   // TY  (Translate Y)
 
-    xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, x_pos_px, car.x >> 8);
-    xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, y_pos_px, car.y >> 8);
+    xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, x_pos_px, car.x >> 6);
+    xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, y_pos_px, car.y >> 6);
     xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, xram_sprite_ptr, REDRACER_DATA);
     xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, log_size, 4); // 16x16
     xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, has_opacity_metadata, false);
@@ -178,8 +178,8 @@ void resolve_all_collisions(void) {
 }
 
 void update_camera_and_ui(void) {
-    int16_t car_px_x = car.x >> 8;
-    int16_t car_px_y = car.y >> 8;
+    int16_t car_px_x = car.x >> 6;
+    int16_t car_px_y = car.y >> 6;
 
     // Center car, then clamp to map bounds (512x384 map, 320x240 screen)
     int16_t target_x = 160 - car_px_x;
@@ -204,30 +204,30 @@ int main(void) {
         if (RIA.vsync == vsync_last) continue;
         vsync_last = RIA.vsync;
 
-        // Palette for the tile (16 colors)
-        uint16_t tile_palette[16] = {
-            0x0020,  // Index 0 (Transparent)
-            0x0020,
-            0x41A7,
-            0x1AE0,
-            0x72AA,
-            0x0038,
-            0x003E,
-            0x0372,
-            0x2C60,
-            0x35AE,
-            0x053C,
-            0x073E,
-            0x93AE,
-            0xC4B4,
-            0xD534,
-            0xF7BE,
-        };
+        // // Palette for the tile (16 colors)
+        // uint16_t tile_palette[16] = {
+        //     0x0020,  // Index 0 (Transparent)
+        //     0x0020,
+        //     0x41A7,
+        //     0x1AE0,
+        //     0x72AA,
+        //     0x0038,
+        //     0x003E,
+        //     0x0372,
+        //     0x2C60,
+        //     0x35AE,
+        //     0x053C,
+        //     0x073E,
+        //     0x93AE,
+        //     0xC4B4,
+        //     0xD534,
+        //     0xF7BE,
+        // };
 
-        RIA.addr0 = PALETTE_ADDR + 2;
-        RIA.step0 = 1;
-        RIA.rw0 = tile_palette[2] & 0xFF;
-        RIA.rw0 = tile_palette[2] >> 8;
+        // RIA.addr0 = PALETTE_ADDR + 2;
+        // RIA.step0 = 1;
+        // RIA.rw0 = tile_palette[2] & 0xFF;
+        // RIA.rw0 = tile_palette[2] >> 8;
 
         // 2. HARDWARE UPDATE (Do this immediately after VSync!)
         // This sets the scroll for the frame being drawn RIGHT NOW
@@ -248,17 +248,17 @@ int main(void) {
 
         // 6. RENDER PREP
         // Calculate where the cars should be on screen based on the camera we just calculated
-        int16_t screen_x = (car.x >> 8) + next_scroll_x;
-        int16_t screen_y = (car.y >> 8) + next_scroll_y;
+        int16_t screen_x = (car.x >> 6) + next_scroll_x;
+        int16_t screen_y = (car.y >> 6) + next_scroll_y;
         
         draw_player(&car, screen_x, screen_y);
         draw_ai_cars(next_scroll_x, next_scroll_y); // Passing next_scroll_x/y inside this function is a good idea too
 
 
-        RIA.addr0 = PALETTE_ADDR + 2;
-        RIA.step0 = 1;
-        RIA.rw0 = tile_palette[6] & 0xFF;
-        RIA.rw0 = tile_palette[6] >> 8;
+        // RIA.addr0 = PALETTE_ADDR + 2;
+        // RIA.step0 = 1;
+        // RIA.rw0 = tile_palette[6] & 0xFF;
+        // RIA.rw0 = tile_palette[6] >> 8;
 
 
     }

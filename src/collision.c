@@ -8,8 +8,8 @@
 #define IMPACT_SPIN 16       // Large angle jerk (approx 45 degrees)
 
 void resolve_car_collision(Car *c1, Car *c2) {
-    int16_t dx = (c2->x >> 8) - (c1->x >> 8);
-    int16_t dy = (c2->y >> 8) - (c1->y >> 8);
+    int16_t dx = (c2->x >> 6) - (c1->x >> 6);
+    int16_t dy = (c2->y >> 6) - (c1->y >> 6);
     
     // Quick Manhattan exit
     if (abs(dx) > 12 || abs(dy) > 12) return;
@@ -37,13 +37,13 @@ void resolve_car_collision(Car *c1, Car *c2) {
         int16_t push_y = (dy > 0) ? -CAR_PUSH_FORCE : CAR_PUSH_FORCE;
 
         // Check C1: Would the push put C1 in a wall?
-        if (get_terrain_at(((c1->x + push_x) >> 8) + 8, ((c1->y + push_y) >> 8) + 8) != TERRAIN_WALL) {
+        if (get_terrain_at(((c1->x + push_x) >> 6) + 8, ((c1->y + push_y) >> 6) + 8) != TERRAIN_WALL) {
             c1->x += push_x;
             c1->y += push_y;
         }
 
         // Check C2: Would the push put C2 in a wall?
-        if (get_terrain_at(((c2->x - push_x) >> 8) + 8, ((c2->y - push_y) >> 8) + 8) != TERRAIN_WALL) {
+        if (get_terrain_at(((c2->x - push_x) >> 6) + 8, ((c2->y - push_y) >> 6) + 8) != TERRAIN_WALL) {
             c2->x -= push_x;
             c2->y -= push_y;
         }

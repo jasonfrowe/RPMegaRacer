@@ -70,23 +70,20 @@ const int16_t TY_LUT[256] = {
 };
 
 void init_player(void) {
-    // Initialize player car position and velocity
-    // Starting position: back of grid, left of starting line
-    car.x = 245L << 8;  // Left of starting line at X=255
-    car.y = 70L << 8;   // Back position in track width (Y=33-86)
+    // 245 pixels in 10.6 is 245 << 6
+    car.x = 245 << 6;  
+    car.y = 70 << 6;   
     car.vel_x = 0;
     car.vel_y = 0;
-    car.angle = 64; // Facing Left (West, 0=Up, 64=Left, 128=Down)
-
+    car.angle = 64; 
 }
 
 uint8_t rebound_timer = 0;
 
-// Tuning
-#define BOUNCE_IMPULSE 0x080 
-#define PUSH_OUT_DIST  0x060 
-#define REBOUND_STUN   4     
-#define HBOX           4     // 8x8 detection area
+// Tuning constants
+#define BOUNCE_IMPULSE 0x080  // 8.8 value
+#define PUSH_OUT_10_6  0x018  // ~0.4 pixels in 10.6 math (0.4 * 64)
+#define REBOUND_STUN   4
 
 // OPTIMIZED: Checks 4 corners using 16-bit pixel coordinates
 // This replaces the 49-lookup nested loop
@@ -117,7 +114,7 @@ void update_player(Car *p) {
     int8_t s = SIN_LUT[p->angle];
     int8_t c = SIN_LUT[(p->angle + 64) & 0xFF];
 
-    // 2. Thrust & Friction
+    // 2. Thrust (8.8)
     if (rebound_timer > 0) {
         rebound_timer--;
     } else {
@@ -131,44 +128,48 @@ void update_player(Car *p) {
         }
     }
 
+    // 3. Friction (8.8)
     int16_t dvx = (p->vel_x >> FRICTION_SHIFT);
     int16_t dvy = (p->vel_y >> FRICTION_SHIFT);
     if (dvx == 0 && p->vel_x != 0) dvx = (p->vel_x > 0) ? 1 : -1;
     if (dvy == 0 && p->vel_y != 0) dvy = (p->vel_y > 0) ? 1 : -1;
     p->vel_x -= dvx; p->vel_y -= dvy;
 
-    // --- 3. OPTIMIZED COLLISION ---
-    // Convert 32-bit position to 16-bit pixels ONCE
-    int16_t cur_px_x = (int16_t)(p->x >> 8);
-    int16_t cur_px_y = (int16_t)(p->y >> 8);
+    // --- 4. OPTIMIZED 16-BIT COLLISION ---
+    // Pixel conversion (10.6 uses >> 6)
+    int16_t cur_px_x = p->x >> 6;
+    int16_t cur_px_y = p->y >> 6;
 
-    // Try X
+    // Move X
     if (p->vel_x != 0) {
-        int16_t next_px_x = (int16_t)((p->x + p->vel_x) >> 8);
+        // Convert 8.8 velocity to 10.6 delta (shift right by 2)
+        int16_t dx = p->vel_x >> 2;
+        int16_t next_px_x = (p->x + dx) >> 6;
         if (is_colliding_fast(next_px_x, cur_px_y)) {
             p->vel_x = (p->vel_x > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
-            p->x += (p->vel_x > 0 ? PUSH_OUT_DIST : -PUSH_OUT_DIST);
+            p->x += (p->vel_x > 0 ? PUSH_OUT_10_6 : -PUSH_OUT_10_6);
             rebound_timer = REBOUND_STUN;
         } else {
-            p->x += p->vel_x;
-            cur_px_x = next_px_x; // Update local pixel for Y-check
+            p->x += dx;
+            cur_px_x = next_px_x;
         }
     }
 
-    // Try Y
+    // Move Y
     if (p->vel_y != 0) {
-        int16_t next_px_y = (int16_t)((p->y + p->vel_y) >> 8);
+        int16_t dy = p->vel_y >> 2;
+        int16_t next_px_y = (p->y + dy) >> 6;
         if (is_colliding_fast(cur_px_x, next_px_y)) {
             p->vel_y = (p->vel_y > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
-            p->y += (p->vel_y > 0 ? PUSH_OUT_DIST : -PUSH_OUT_DIST);
+            p->y += (p->vel_y > 0 ? PUSH_OUT_10_6 : -PUSH_OUT_10_6);
             rebound_timer = REBOUND_STUN;
         } else {
-            p->y += p->vel_y;
+            p->y += dy;
         }
     }
 
-    // Terrain speed check (only center point)
-    if (get_terrain_at(cur_px_x + 8, (int16_t)(p->y >> 8) + 8) == TERRAIN_GRASS) {
+    // Terrain speed check (Center point)
+    if (get_terrain_at((p->x >> 6) + 8, (p->y >> 6) + 8) == TERRAIN_GRASS) {
         p->vel_x -= (p->vel_x >> 3);
         p->vel_y -= (p->vel_y >> 3);
     }
@@ -176,60 +177,31 @@ void update_player(Car *p) {
     update_engine_sound((uint16_t)(abs(p->vel_x) + abs(p->vel_y)));
 }
 
-// OPTIMIZED: Direct XRAM writes instead of struct_set overhead
+// OPTIMIZED: Direct XRAM writes with correct layout
 void draw_player(Car *p, int16_t screen_x, int16_t screen_y) {
-    int16_t s = (int16_t)SIN_LUT[p->angle] << 1;
-    int16_t c = (int16_t)SIN_LUT[(p->angle + 64) & 0xFF] << 1;
-    // int16_t tx = 8 * (256 - c + s);
-    // int16_t ty = 8 * (256 - c - s);
-
-    // Pivot Offsets from the NEW LUTs
     uint8_t ang = p->angle;
+    int16_t s = (int16_t)SIN_LUT[ang] << 1;
+    int16_t c = (int16_t)SIN_LUT[(ang + 64) & 0xFF] << 1;
     int16_t tx = TX_LUT[ang];
     int16_t ty = TY_LUT[ang];
 
     RIA.addr0 = REDRACER_CONFIG; 
     RIA.step0 = 1;
 
-    // Fast sequential write to the vga_mode4_asprite_t structure
-    RIA.rw0 = c & 0xFF;        RIA.rw0 = c >> 8;        // transform[0] (sx)
-    RIA.rw0 = (-s) & 0xFF;     RIA.rw0 = (-s) >> 8;     // transform[1] (shy)
-    RIA.rw0 = tx & 0xFF;       RIA.rw0 = tx >> 8;       // transform[2] (tx)
-    RIA.rw0 = s & 0xFF;        RIA.rw0 = s >> 8;        // transform[3] (shx)
-    RIA.rw0 = c & 0xFF;        RIA.rw0 = c >> 8;        // transform[4] (sy)
-    RIA.rw0 = ty & 0xFF;       RIA.rw0 = ty >> 8;       // transform[5] (ty)
-    RIA.rw0 = screen_x & 0xFF; RIA.rw0 = screen_x >> 8; // x
-    RIA.rw0 = screen_y & 0xFF; RIA.rw0 = screen_y >> 8; // y
-}
-
-uint8_t check_collision_at_pos(int32_t x, int32_t y, uint8_t angle) {
-    (void)angle;  // Ignore rotation - use axis-aligned box
-    
-    int16_t cx = (x >> 8) + 8;  // Center of sprite
-    int16_t cy = (y >> 8) + 8;
-    
-    // Check a 6x6 square centered on the car (smaller than actual car for better feel)
-    // This is a solid hitbox - check every pixel
-    uint8_t found_grass = 0;
-    
-    for (int16_t dy = -3; dy <= 3; dy++) {
-        for (int16_t dx = -3; dx <= 3; dx++) {
-            uint8_t terrain = get_terrain_at(cx + dx, cy + dy);
-            if (terrain == TERRAIN_WALL) {
-                return TERRAIN_WALL;  // Any wall pixel = collision
-            }
-            if (terrain == TERRAIN_GRASS) {
-                found_grass = 1;
-            }
-        }
-    }
-    
-    return found_grass ? TERRAIN_GRASS : TERRAIN_ROAD;
+    // transform[6], then x, then y
+    RIA.rw0 = c & 0xFF;    RIA.rw0 = c >> 8;     // SX
+    RIA.rw0 = (-s) & 0xFF; RIA.rw0 = (-s) >> 8;  // SHY
+    RIA.rw0 = tx & 0xFF;   RIA.rw0 = tx >> 8;    // TX
+    RIA.rw0 = s & 0xFF;    RIA.rw0 = s >> 8;     // SHX
+    RIA.rw0 = c & 0xFF;    RIA.rw0 = c >> 8;     // SY
+    RIA.rw0 = ty & 0xFF;   RIA.rw0 = ty >> 8;    // TY
+    RIA.rw0 = screen_x & 0xFF; RIA.rw0 = screen_x >> 8; 
+    RIA.rw0 = screen_y & 0xFF; RIA.rw0 = screen_y >> 8; 
 }
 
 void update_camera(Car *p) {
-    int16_t car_px_x = (int16_t)(p->x >> 8);
-    int16_t car_px_y = (int16_t)(p->y >> 8);
+    int16_t car_px_x = p->x >> 6;
+    int16_t car_px_y = p->y >> 6;
     int16_t target_x = 160 - car_px_x;
     int16_t target_y = 120 - car_px_y;
 
@@ -238,7 +210,6 @@ void update_camera(Car *p) {
     if (target_y > 0) target_y = 0;
     if (target_y < -144) target_y = -144;
 
-    // Use shadow registers in main.c instead of writing XRAM here twice
     extern int16_t next_scroll_x, next_scroll_y;
     next_scroll_x = target_x;
     next_scroll_y = target_y;
