@@ -45,7 +45,7 @@ uint16_t midi_to_opl_freq(uint8_t midi_note) {
 }
 
 void opl_write(uint8_t reg, uint8_t data) {
-    #ifdef USE_NATIVE_OPL2
+#ifdef USE_NATIVE_OPL2
     RIA.addr1 = OPL_ADDR + reg;
     RIA.rw1 = data;
 #else
@@ -164,9 +164,14 @@ void shutdown_audio() {
 
 void OPL_Config(uint8_t enable, uint16_t addr) {
     // Configure OPL Device in FPGA
-
+#ifdef USE_NATIVE_OPL2
+    // Native RIA OPL2 Initialization (Device 0, Channel 1)
+    xreg(0, 1, 0x01, addr); 
+    // xregn(0, 1, 0x01, 1, addr);
+#else
     // Args: dev(1), chan(0), reg(9), count(3)
     xregn(2, 0, 0, 2, enable, addr);
+#endif
     
 }
 
@@ -242,20 +247,6 @@ void update_music() {
 
             if (reg == 0xFF && val == 0xFF) {
                 off_t seek_res = lseek(music_fd, 0, SEEK_SET);
-                // if (seek_res == -1) {
-                //     int err = errno;
-                //     printf("Music: Sentinel Lseek Error %d\n", err);
-                //     music_error_state = true;
-                // } else {
-                //     printf("Music: Loop Sentinel Correctly Processed.\n");
-                // }
-                
-                // probably not available in rp6502 for LLVM-MOS
-                // f_lseek(music_fd, 0, SEEK_SET);
-
-                // printf("Music: Sentinel Hit. Re-opening...\n");
-                // close(music_fd);
-                // music_fd = open(MUSIC_FILENAME, O_RDONLY);
 
                 printf("Music: Looping to start of track.\n");
                 music_buf_idx = 512; // Force buffer reload
@@ -272,34 +263,3 @@ void update_music() {
         }
     }
 }
-
-// void debug_test_lseek() {
-//     uint8_t start_bytes[4];
-//     uint8_t check_bytes[4];
-//     off_t pos;
-    
-//     // 1. Read first 4 bytes
-//     // pos = lseek(music_fd, 0, SEEK_SET);
-//     // printf("LSEEK TEST: Initial lseek to pos %ld\n", (long)pos);
-//     read(music_fd, start_bytes, 4);
-    
-//     // 2. Move away and move back
-//     // pos = lseek(music_fd, 1024, SEEK_SET); 
-//     // printf("LSEEK TEST: Moved to pos %ld\n", (long)pos);
-//     pos = lseek(music_fd, 0, SEEK_SET); 
-//     printf("LSEEK TEST: Returned to pos %ld\n", (long)pos);
-    
-//     // 3. Read again
-//     read(music_fd, check_bytes, 4);
-    
-//     printf("LSEEK TEST: First Read: %02X %02X %02X %02X\n", 
-//             start_bytes[0], start_bytes[1], start_bytes[2], start_bytes[3]);
-//     printf("LSEEK TEST: After Seek: %02X %02X %02X %02X\n", 
-//             check_bytes[0], check_bytes[1], check_bytes[2], check_bytes[3]);
-            
-//     if (start_bytes[0] == check_bytes[0] && start_bytes[1] == check_bytes[1]) {
-//         printf("RESULT: lseek is working correctly.\n");
-//     } else {
-//         printf("RESULT: lseek FAILED or returned inconsistent data!\n");
-//     }
-// }
