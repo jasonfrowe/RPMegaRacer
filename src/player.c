@@ -77,14 +77,25 @@ uint8_t is_colliding(int32_t x_fixed, int32_t y_fixed) {
 uint8_t rebound_timer = 0; // Global or in Car struct
 
 void update_player(Car *p) {
-    // 1. Handle Rotation (Allow rotation even during rebound)
+    // --- 1. HANDLE ROTATION ---
     if (is_action_pressed(0, ACTION_ROTATE_LEFT)) p->angle += TURN_SPEED;
     if (is_action_pressed(0, ACTION_ROTATE_RIGHT)) p->angle -= TURN_SPEED;
 
     int8_t s = SIN_LUT[p->angle];
     int8_t c = SIN_LUT[(p->angle + 64) & 0xFF];
 
-    // 2. Handle Thrust (Disable during rebound stun)
+    // --- 2. STATIC OVERLAP CHECK (The "Un-Sticker") ---
+    // If rotation pushed a corner into a wall, nudge out but DO NOT stun.
+    if (is_colliding(p->x, p->y)) {
+        // Nudge based on current heading to clear the wall
+        p->x += (int32_t)s << 1; 
+        p->y += (int32_t)c << 1;
+        // Kill velocity so we don't "vibrate" inside the wall
+        p->vel_x = 0;
+        p->vel_y = 0;
+    }
+
+    // --- 3. HANDLE THRUST (Input check) ---
     if (rebound_timer > 0) {
         rebound_timer--;
     } else {
@@ -92,59 +103,56 @@ void update_player(Car *p) {
             p->vel_x -= (int16_t)s >> THRUST_SCALER;
             p->vel_y -= (int16_t)c >> THRUST_SCALER;
         }
-
-        // Handle Reverse Thrust (backing up)
         if (is_action_pressed(0, ACTION_SUPER_FIRE)) {
-            // Opposite direction of thrust, slightly weaker
             p->vel_x += (int16_t)s >> (THRUST_SCALER + 1);
             p->vel_y += (int16_t)c >> (THRUST_SCALER + 1);
         }
-
     }
 
-    // 3. Friction
+    // --- 4. FRICTION ---
     int16_t dvx = (p->vel_x >> FRICTION_SHIFT);
     int16_t dvy = (p->vel_y >> FRICTION_SHIFT);
     if (dvx == 0 && p->vel_x != 0) dvx = (p->vel_x > 0) ? 1 : -1;
     if (dvy == 0 && p->vel_y != 0) dvy = (p->vel_y > 0) ? 1 : -1;
-    p->vel_x -= dvx; p->vel_y -= dvy;
+    p->vel_x -= dvx; 
+    p->vel_y -= dvy;
 
-    // --- 4. STEP-WISE MOVEMENT WITH ARCADE BOUNCE ---
+    // --- 5. COMPONENT-WISE MOVEMENT (Sliding) ---
     
-    // X-AXIS
-    int32_t old_x = p->x;
-    p->x += p->vel_x;
-    if (is_colliding(p->x, p->y)) {
-        // --- BOUNCE LOGIC ---
-        // A. Apply Impulse (Kick away from wall)
-        p->vel_x = (p->vel_x > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
-        
-        // B. Push-Out (Visual gap)
-        p->x = old_x + ((p->vel_x > 0) ? PUSH_OUT_DIST : -PUSH_OUT_DIST);
-        
-        // C. Stun (Arcade feedback)
-        rebound_timer = REBOUND_STUN;
-        // play_opl2_sfx(SFX_CRASH); // Assuming you have this
+    // TRY X MOVEMENT
+    if (p->vel_x != 0) {
+        int32_t next_x = p->x + p->vel_x;
+        if (is_colliding(next_x, p->y)) {
+            // HIT X: Bounce and Stun only if we had significant speed
+            p->vel_x = (p->vel_x > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
+            p->x += (p->vel_x > 0 ? PUSH_OUT_DIST : -PUSH_OUT_DIST);
+            rebound_timer = REBOUND_STUN;
+        } else {
+            p->x = next_x;
+        }
     }
 
-    // Y-AXIS
-    int32_t old_y = p->y;
-    p->y += p->vel_y;
-    if (is_colliding(p->x, p->y)) {
-        p->vel_y = (p->vel_y > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
-        p->y = old_y + ((p->vel_y > 0) ? PUSH_OUT_DIST : -PUSH_OUT_DIST);
-        rebound_timer = REBOUND_STUN;
-        // play_opl2_sfx(SFX_CRASH);
+    // TRY Y MOVEMENT
+    if (p->vel_y != 0) {
+        int32_t next_y = p->y + p->vel_y;
+        if (is_colliding(p->x, next_y)) {
+            // HIT Y: Bounce and Stun
+            p->vel_y = (p->vel_y > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
+            p->y += (p->vel_y > 0 ? PUSH_OUT_DIST : -PUSH_OUT_DIST);
+            rebound_timer = REBOUND_STUN;
+        } else {
+            p->y = next_y;
+        }
     }
 
-    // --- 5. POST-MOVE CHECKS ---
+    // --- 6. TERRAIN & AUDIO ---
     if (get_terrain_at((p->x >> 8) + 8, (p->y >> 8) + 8) == TERRAIN_GRASS) {
         p->vel_x -= (p->vel_x >> 3);
         p->vel_y -= (p->vel_y >> 3);
     }
     update_engine_sound((uint16_t)(abs(p->vel_x) + abs(p->vel_y)));
 
-    // 6. World Clamping
+    // 7. CLAMPING
     if (p->x < 0x800) p->x = 0x800;
     if (p->x > 131072L - 0x800) p->x = 131072L - 0x800;
     if (p->y < 0x800) p->y = 0x800;

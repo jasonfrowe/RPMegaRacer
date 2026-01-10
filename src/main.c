@@ -134,115 +134,133 @@ uint8_t vsync_last = 0;
 uint16_t timer_accumulator = 0;
 bool music_enabled = true;
 
-// Globals to track camera
-int16_t camera_x = 0;
-int16_t camera_y = 0;
+int16_t next_scroll_x = 0;
+int16_t next_scroll_y = 0;
 
-int16_t next_scroll_x, next_scroll_y;
-
-int main(void)
-{
-    puts("Hello from RPMegaRacer!");
-
-    // Enable keyboard input
+void init_all_systems(void) {
+    // Hardware Setup
     xregn(0, 0, 0, 1, KEYBOARD_INPUT);
-    // Enable gamepad input
     xregn(0, 0, 2, 1, GAMEPAD_INPUT);
-    // Initialize Graphics 
+    
+    // Game Logic Setup
     init_player();
-    init_ai();  // Initialize AI cars
+    init_ai();
     init_graphics();
-    init_track_physics(); // Initialize terrain collision properties
+    init_track_physics();
+    init_input_system();
 
-    // Initialize input mappings (ensure `button_mappings` are set)
-    init_input_system(); 
-
-    // Initialize OPL
+    // Audio Setup
     OPL_Config(1, OPL_ADDR);
     opl_init();
-
-    // Start music playback
     music_init(MUSIC_FILENAME);
-
-    // Initialize PSG sound
     init_psg();
+}
+
+void process_audio_frame(void) {
+    if (!music_enabled) return;
+    
+    timer_accumulator += SONG_HZ;
+    while (timer_accumulator >= 60) {
+        update_music();
+        timer_accumulator -= 60;
+    }
+}
+
+void resolve_all_collisions(void) {
+    // Player vs AI
+    for (int i = 0; i < NUM_AI_CARS; i++) {
+        resolve_car_collision(&car, &ai_cars[i].car);
+    }
+    // AI vs AI
+    resolve_car_collision(&ai_cars[0].car, &ai_cars[1].car);
+    resolve_car_collision(&ai_cars[0].car, &ai_cars[2].car);
+    resolve_car_collision(&ai_cars[1].car, &ai_cars[2].car);
+}
+
+void update_camera_and_ui(void) {
+    int16_t car_px_x = car.x >> 8;
+    int16_t car_px_y = car.y >> 8;
+
+    // Center car, then clamp to map bounds (512x384 map, 320x240 screen)
+    int16_t target_x = 160 - car_px_x;
+    int16_t target_y = 120 - car_px_y;
+
+    if (target_x > 0) target_x = 0;
+    if (target_x < -192) target_x = -192; 
+    if (target_y > 0) target_y = 0;
+    if (target_y < -144) target_y = -144;
+
+    // Save for the START of the next frame
+    next_scroll_x = target_x;
+    next_scroll_y = target_y;
+}
+
+int main(void) {
+    puts("MegaRacer Engine Starting...");
+    init_all_systems();
 
     while (1) {
-        // --- 1. SYNC TO VSYNC ---
-        if (RIA.vsync == vsync_last)
-            continue;
+        // 1. SYNC
+        if (RIA.vsync == vsync_last) continue;
         vsync_last = RIA.vsync;
 
+        // Palette for the tile (16 colors)
+        uint16_t tile_palette[16] = {
+            0x0020,  // Index 0 (Transparent)
+            0x0020,
+            0x41A7,
+            0x1AE0,
+            0x72AA,
+            0x0038,
+            0x003E,
+            0x0372,
+            0x2C60,
+            0x35AE,
+            0x053C,
+            0x073E,
+            0x93AE,
+            0xC4B4,
+            0xD534,
+            0xF7BE,
+        };
+
+        RIA.addr0 = PALETTE_ADDR + 2;
+        RIA.step0 = 1;
+        RIA.rw0 = tile_palette[2] & 0xFF;
+        RIA.rw0 = tile_palette[2] >> 8;
+
+        // 2. HARDWARE UPDATE (Do this immediately after VSync!)
+        // This sets the scroll for the frame being drawn RIGHT NOW
         xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, x_pos_px, next_scroll_x);
         xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, y_pos_px, next_scroll_y);
 
-        // --- 2. DRIVE MUSIC ---
-        // This math allows any SONG_HZ to work on a 60Hz VSync
-        if (music_enabled) {
-            timer_accumulator += SONG_HZ;
-            while (timer_accumulator >= 60) {
-                update_music();
-                timer_accumulator -= 60;
-            }
-        }
+        // 3. AUDIO
+        process_audio_frame();
 
-        // --- 3. YOUR GAME LOGIC ---
-        // Handle input
+        // 4. PHYSICS & LOGIC
         handle_input();
-
-        // Update player
         update_player(&car);
-
-        // Update AI cars
         update_ai();
-
-        // --- RESOLVE CAR COLLISIONS ---
-        // 1. Player vs all 3 AI
-        resolve_car_collision(&car, &ai_cars[0].car);
-        resolve_car_collision(&car, &ai_cars[1].car);
-        resolve_car_collision(&car, &ai_cars[2].car);
-
-        // 2. AI vs each other
-        resolve_car_collision(&ai_cars[0].car, &ai_cars[1].car);
-        resolve_car_collision(&ai_cars[0].car, &ai_cars[2].car);
-        resolve_car_collision(&ai_cars[1].car, &ai_cars[2].car);
-
-        // Camera system with deadzone - only scroll when car gets near edges
-        int16_t car_px_x = car.x >> 8;
-        int16_t car_px_y = car.y >> 8;
+        resolve_all_collisions();
         
-        // Calculate ideal camera offset into the map (for wrapped tilemap)
-        // We want car centered, so offset = screen_center - car_position
-        int16_t target_offset_x = 160 - car_px_x;
-        int16_t target_offset_y = 120 - car_px_y;
+        // 5. POST-PROCESS (Camera & UI)
+        update_camera_and_ui();
+
+        // 6. RENDER PREP
+        // Calculate where the cars should be on screen based on the camera we just calculated
+        int16_t screen_x = (car.x >> 8) + next_scroll_x;
+        int16_t screen_y = (car.y >> 8) + next_scroll_y;
         
-        // Clamp camera offset to valid map bounds
-        // Map is 512x384, screen is 320x240
-        // Offset range: x [-192 to 0], y [-144 to 0]
-        if (target_offset_x > 0) target_offset_x = 0;          // Don't scroll past left edge
-        if (target_offset_x < -192) target_offset_x = -192;    // Don't scroll past right edge (512-320=192)
-        if (target_offset_y > 0) target_offset_y = 0;          // Don't scroll past top edge
-        if (target_offset_y < -144) target_offset_y = -144;    // Don't scroll past bottom edge (384-240=144)
-        
-        next_scroll_x = target_offset_x;
-        next_scroll_y = target_offset_y;
-
-        // xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, x_pos_px, scroll_x);
-        // xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, y_pos_px, scroll_y);
-
-        // Calculate car's screen position
-        int16_t screen_x = car_px_x + next_scroll_x;
-        int16_t screen_y = car_px_y + next_scroll_y;
-
-        // Draw player
         draw_player(&car, screen_x, screen_y);
+        draw_ai_cars(next_scroll_x, next_scroll_y); // Passing next_scroll_x/y inside this function is a good idea too
 
-        // Draw AI cars
-        draw_ai_cars();
 
-        // printf("Car Pos: (%ld, %ld) Vel:(%d, %d) Angle:%d  \n", car.x >> 8, car.y >> 8, car.vel_x, car.vel_y, car.angle);
-        // printf("Camera: (%d, %d) Screen: (%d, %d)        \n", scroll_x, scroll_y, screen_x, screen_y);
+        RIA.addr0 = PALETTE_ADDR + 2;
+        RIA.step0 = 1;
+        RIA.rw0 = tile_palette[6] & 0xFF;
+        RIA.rw0 = tile_palette[6] >> 8;
+
 
     }
-
+    return 0;
 }

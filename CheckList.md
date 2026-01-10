@@ -29,8 +29,8 @@ Since you are using LLVM-MOS, you can use `structs` to manage car state, which w
 - [x] **Collision Response:** 
     - Grass: Multiply velocity by 0.7 (slow down).
     - Wall: Bounce or stop (and trigger an OPL2 "crunch" sound).
-- [ ] **Waypoint System:** Create an array of `(x, y)` waypoints for AI drones.
-- [ ] **AI Steering:** Write a function that makes AI cars steer toward the next waypoint once they are within a certain radius of the current one.
+- [x] **Waypoint System:** Create an array of `(x, y)` waypoints for AI drones.
+- [x] **AI Steering:** Write a function that makes AI cars steer toward the next waypoint once they are within a certain radius of the current one.
 - [ ] **Lap Logic:** Place "Checklines" (invisible sectors) to ensure players drive the whole track before a lap is counted.
 
 ### Phase 5: OPL2 Audio Implementation

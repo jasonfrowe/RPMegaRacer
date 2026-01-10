@@ -176,26 +176,22 @@ post_movement_ai:
 }
 
 
-void draw_ai_cars(void) {
+void draw_ai_cars(int16_t scroll_x, int16_t scroll_y) {
+    extern const int8_t SIN_LUT[256];
+
     for (uint8_t i = 0; i < NUM_AI_CARS; i++) {
         AICar *ai = &ai_cars[i];
-        unsigned config_addr = REDRACER_CONFIG + sizeof(vga_mode4_asprite_t) * ai->sprite_index;
         
-        // Get camera position from player
-        extern Car car;  // Player car
-        int16_t camera_x = (car.x >> 8) - 160;
-        int16_t camera_y = (car.y >> 8) - 120;
+        // Calculate the XRAM address for this specific car's config struct
+        // Uses sprite_index (1, 2, 3) to offset from the Player's config at index 0
+        uint16_t config_addr = REDRACER_CONFIG + (sizeof(vga_mode4_asprite_t) * ai->sprite_index);
         
-        if (camera_x < 0) camera_x = 0;
-        if (camera_x > 192) camera_x = 192;
-        if (camera_y < 0) camera_y = 0;
-        if (camera_y > 144) camera_y = 144;
+        // Calculate screen position: (World Position) + (Map Origin Screen Offset)
+        int16_t screen_x = (int16_t)(ai->car.x >> 8) + scroll_x;
+        int16_t screen_y = (int16_t)(ai->car.y >> 8) + scroll_y;
         
-        // Calculate screen position
-        int16_t screen_x = (ai->car.x >> 8) - camera_x;
-        int16_t screen_y = (ai->car.y >> 8) - camera_y;
-        
-        // Set rotation matrix
+        // --- 1. SET ROTATION MATRIX ---
+        // Scale to 8.8 (1.0 = 256)
         int16_t s = (int16_t)SIN_LUT[ai->car.angle] << 1;
         int16_t c = (int16_t)SIN_LUT[(ai->car.angle + 64) & 0xFF] << 1;
         
@@ -204,13 +200,15 @@ void draw_ai_cars(void) {
         xram0_struct_set(config_addr, vga_mode4_asprite_t, transform[3], s);  // SHX
         xram0_struct_set(config_addr, vga_mode4_asprite_t, transform[4], c);  // SY
         
-        // Pivot translation
+        // --- 2. SET PIVOT TRANSLATION ---
+        // Formula to rotate 16x16 around center (8,8)
         int16_t tx = 8 * (256 - c + s);
         int16_t ty = 8 * (256 - c - s);
+        
         xram0_struct_set(config_addr, vga_mode4_asprite_t, transform[2], tx);
         xram0_struct_set(config_addr, vga_mode4_asprite_t, transform[5], ty);
         
-        // Update position
+        // --- 3. SET SCREEN POSITION ---
         xram0_struct_set(config_addr, vga_mode4_asprite_t, x_pos_px, screen_x);
         xram0_struct_set(config_addr, vga_mode4_asprite_t, y_pos_px, screen_y);
     }

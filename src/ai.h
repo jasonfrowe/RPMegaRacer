@@ -38,6 +38,6 @@ extern Waypoint waypoints[NUM_WAYPOINTS];
 // Functions
 void init_ai(void);
 void update_ai(void);
-void draw_ai_cars(void);
+void draw_ai_cars(int16_t scroll_x, int16_t scroll_y);
 
 #endif // AI_H
