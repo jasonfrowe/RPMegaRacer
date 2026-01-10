@@ -41,5 +41,6 @@ extern Waypoint waypoints[NUM_WAYPOINTS];
 void init_ai(void);
 void update_ai(void);
 void draw_ai_cars(int16_t scroll_x, int16_t scroll_y);
+extern uint8_t atan2_8(int16_t dy, int16_t dx);
 
 #endif // AI_H

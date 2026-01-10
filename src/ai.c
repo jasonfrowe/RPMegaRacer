@@ -33,7 +33,7 @@ static uint8_t is_colliding_ai(int16_t px, int16_t py) {
     return 0;
 }
 
-static uint8_t atan2_8(int16_t dy, int16_t dx) {
+uint8_t atan2_8(int16_t dy, int16_t dx) {
     if (dx == 0 && dy == 0) return 0;
     int16_t abs_dx = (dx < 0) ? -dx : dx;
     int16_t abs_dy = (dy < 0) ? -dy : dy;

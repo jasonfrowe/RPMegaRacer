@@ -237,11 +237,23 @@ int main(void) {
         // 3. AUDIO
         process_audio_frame();
 
+        uint16_t player_frame_start_x = car.x;
+        uint16_t player_frame_start_y = car.y;
+
         // 4. PHYSICS & LOGIC
         handle_input();
         update_player(&car);
         update_ai();
         resolve_all_collisions();
+
+        // If the ramming phase pushed the player into a wall, 
+        // undo the ram and the movement entirely.
+        if (is_colliding_fast(car.x >> 6, car.y >> 6)) {
+            car.x = player_frame_start_x;
+            car.y = player_frame_start_y;
+            car.vel_x = 0;
+            car.vel_y = 0;
+        }
 
         // Process lap logic
         update_lap_logic(&car, true);

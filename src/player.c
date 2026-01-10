@@ -7,6 +7,7 @@
 #include "track.h"
 #include "sound.h"
 #include <stdio.h>
+#include "ai.h"
 
 // External Sin table
 extern const int8_t SIN_LUT[256];
@@ -74,12 +75,49 @@ const int16_t TY_LUT[256] = {
 uint8_t rebound_timer = 0;
 
 void rescue_player(Car *p) {
-    p->x = 245 << 6;  // Starting X
-    p->y = 70 << 6;   // Starting Y
+    uint8_t best_wp = 0;
+    uint32_t min_dist = 0xFFFFFFFF; // Start with max possible 32-bit value
+
+    // Current player position in pixels
+    int16_t px = p->x >> 6;
+    int16_t py = p->y >> 6;
+
+    // 1. Find the geographically nearest waypoint
+    for (uint8_t i = 0; i < NUM_WAYPOINTS; i++) {
+        int16_t dx = px - waypoints[i].x;
+        int16_t dy = py - waypoints[i].y;
+        
+        // Calculate distance squared (dx*dx + dy*dy)
+        // We use 32-bit here to prevent overflow since dx/dy can be up to 512
+        uint32_t dsq = (uint32_t)dx * dx + (uint32_t)dy * dy;
+
+        if (dsq < min_dist) {
+            min_dist = dsq;
+            best_wp = i;
+        }
+    }
+
+    // 2. Teleport to the center of that waypoint
+    p->x = (uint16_t)waypoints[best_wp].x << 6;
+    p->y = (uint16_t)waypoints[best_wp].y << 6;
+
+    // 3. Reset physics state
     p->vel_x = 0;
     p->vel_y = 0;
-    p->angle = 64;    // Facing Left
     rebound_timer = 0;
+
+    // 4. Set orientation
+    // Point the car toward the NEXT waypoint in the sequence
+    uint8_t next_wp = (best_wp + 1) % NUM_WAYPOINTS;
+    int16_t ndx = waypoints[next_wp].x - waypoints[best_wp].x;
+    int16_t ndy = waypoints[next_wp].y - waypoints[best_wp].y;
+
+    // Use your atan2 logic to get the angle (standard 0=Right)
+    uint8_t standard_angle = atan2_8(ndy, ndx);
+    // Convert to your CCW 0=Up system: (192 - standard)
+    p->angle = (192 - standard_angle) & 0xFF;
+    
+    printf("Rescued to WP %d\n", best_wp);
 }
 
 void init_player(void) {
@@ -100,7 +138,7 @@ void init_player(void) {
 
 // OPTIMIZED: Checks 4 corners using 16-bit pixel coordinates
 // This replaces the 49-lookup nested loop
-static uint8_t is_colliding_fast(int16_t px, int16_t py) {
+uint8_t is_colliding_fast(int16_t px, int16_t py) {
     int16_t cx = px + 8; // Center of 16x16
     int16_t cy = py + 8;
     #define H 5 // 10x10 hitbox
@@ -120,21 +158,19 @@ static uint8_t is_colliding_fast(int16_t px, int16_t py) {
 }
 
 void update_player(Car *p) {
+    // 1. SAVE SAFE POSITION
+    // This is our "Undo" buffer if we hit a wall or get rammed
+    uint16_t safe_x = p->x;
+    uint16_t safe_y = p->y;
 
-    // --- 1. MANUAL RESCUE TRIGGER ---
-    if (is_action_pressed(0, ACTION_PAUSE)) {
-        rescue_player(p);
-        return; 
-    }
-
-    // 1. Rotation
+    // 2. HANDLE ROTATION & INPUT
+    if (is_action_pressed(0, ACTION_PAUSE)) { rescue_player(p); return; }
     if (is_action_pressed(0, ACTION_ROTATE_LEFT)) p->angle += TURN_SPEED;
     if (is_action_pressed(0, ACTION_ROTATE_RIGHT)) p->angle -= TURN_SPEED;
 
     int8_t s = SIN_LUT[p->angle];
     int8_t c = SIN_LUT[(p->angle + 64) & 0xFF];
 
-    // 2. Thrust (8.8)
     if (rebound_timer > 0) {
         rebound_timer--;
     } else {
@@ -148,47 +184,36 @@ void update_player(Car *p) {
         }
     }
 
-    // 3. Friction (8.8)
+    // 3. FRICTION
     int16_t dvx = (p->vel_x >> FRICTION_SHIFT);
     int16_t dvy = (p->vel_y >> FRICTION_SHIFT);
     if (dvx == 0 && p->vel_x != 0) dvx = (p->vel_x > 0) ? 1 : -1;
     if (dvy == 0 && p->vel_y != 0) dvy = (p->vel_y > 0) ? 1 : -1;
     p->vel_x -= dvx; p->vel_y -= dvy;
 
-    // --- 4. OPTIMIZED 16-BIT COLLISION ---
-    // Pixel conversion (10.6 uses >> 6)
-    int16_t cur_px_x = p->x >> 6;
-    int16_t cur_px_y = p->y >> 6;
-
-    // Move X
+    // --- 4. AXIS-SEPARATED SNAP-BACK ---
+    
+    // MOVE X
     if (p->vel_x != 0) {
-        // Convert 8.8 velocity to 10.6 delta (shift right by 2)
-        int16_t dx = p->vel_x >> 2;
-        int16_t next_px_x = (p->x + dx) >> 6;
-        if (is_colliding_fast(next_px_x, cur_px_y)) {
-            p->vel_x = (p->vel_x > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
-            p->x += (p->vel_x > 0 ? PUSH_OUT_10_6 : -PUSH_OUT_10_6);
+        p->x += (p->vel_x >> 2); // Apply move
+        if (is_colliding_fast(p->x >> 6, p->y >> 6)) {
+            p->x = safe_x;               // SNAP BACK TO SAFE X
+            p->vel_x = -(p->vel_x >> 1); // BOUNCE
             rebound_timer = REBOUND_STUN;
-        } else {
-            p->x += dx;
-            cur_px_x = next_px_x;
         }
     }
 
-    // Move Y
+    // MOVE Y
     if (p->vel_y != 0) {
-        int16_t dy = p->vel_y >> 2;
-        int16_t next_px_y = (p->y + dy) >> 6;
-        if (is_colliding_fast(cur_px_x, next_px_y)) {
-            p->vel_y = (p->vel_y > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
-            p->y += (p->vel_y > 0 ? PUSH_OUT_10_6 : -PUSH_OUT_10_6);
+        p->y += (p->vel_y >> 2); // Apply move
+        if (is_colliding_fast(p->x >> 6, p->y >> 6)) {
+            p->y = safe_y;               // SNAP BACK TO SAFE Y
+            p->vel_y = -(p->vel_y >> 1); // BOUNCE
             rebound_timer = REBOUND_STUN;
-        } else {
-            p->y += dy;
         }
     }
 
-    // Terrain speed check (Center point)
+    // 5. POST-MOVE CHECKS
     if (get_terrain_at((p->x >> 6) + 8, (p->y >> 6) + 8) == TERRAIN_GRASS) {
         p->vel_x -= (p->vel_x >> 3);
         p->vel_y -= (p->vel_y >> 3);
