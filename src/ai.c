@@ -9,15 +9,33 @@
 #define AI_MAX_THRUST_SHIFT 3      
 #define AI_REDUCED_THRUST_SHIFT 4  
 
-// Arcade Physics Constants (Matched to Player)
 #define BOUNCE_IMPULSE 0x080  
 #define PUSH_OUT_DIST  0x060  
 #define REBOUND_STUN   4      
+#define HBOX           4
 
 extern const int8_t SIN_LUT[256];
-extern uint8_t check_collision_at_pos(int32_t x, int32_t y, uint8_t angle);
 
-// Standard atan2 in 8-bit: 0=Right, 64=Down, 128=Left, 192=Up
+// Shared optimization: 4-corner check using 16-bit pixels
+static uint8_t is_colliding_ai(int16_t px, int16_t py) {
+    int16_t cx = px + 8; // Center of 16x16
+    int16_t cy = py + 8;
+    #define H 5 // 10x10 hitbox
+
+    // Corners
+    if (get_terrain_at(cx - H, cy - H) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx + H, cy - H) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx - H, cy + H) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx + H, cy + H) == TERRAIN_WALL) return 1;
+    // Midpoints
+    if (get_terrain_at(cx,     cy - H) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx,     cy + H) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx - H, cy    ) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx + H, cy    ) == TERRAIN_WALL) return 1;
+
+    return 0;
+}
+
 static uint8_t atan2_8(int16_t dy, int16_t dx) {
     if (dx == 0 && dy == 0) return 0;
     int16_t abs_dx = (dx < 0) ? -dx : dx;
@@ -32,23 +50,6 @@ static uint8_t atan2_8(int16_t dy, int16_t dx) {
     if (dx < 0 && dy >= 0) return 128 - angle;
     if (dx < 0 && dy < 0) return 128 + angle;
     return 256 - angle;
-}
-
-static void ai_steer(AICar *ai, uint8_t target_angle) {
-    uint8_t diff = target_angle - ai->car.angle;
-    if (diff == 0) return;
-    if (diff < 128) ai->car.angle += AI_TURN_SPEED;
-    else ai->car.angle -= AI_TURN_SPEED;
-}
-
-static void ai_apply_thrust(AICar *ai, uint8_t thrust_scaler) {
-    // Only thrust if not in rebound stun
-    if (ai->rebound_timer > 0) return;
-
-    int8_t sin_val = SIN_LUT[ai->car.angle];
-    int8_t cos_val = SIN_LUT[(ai->car.angle + 64) & 0xFF];
-    ai->car.vel_x -= (int16_t)sin_val >> thrust_scaler;
-    ai->car.vel_y -= (int16_t)cos_val >> thrust_scaler;
 }
 
 AICar ai_cars[NUM_AI_CARS];
@@ -88,7 +89,7 @@ void update_ai(void) {
             continue;
         }
 
-        // --- 1. RECOVERY STATE CHECK (Major Stuckness) ---
+        // --- 1. RECOVERY STATE ---
         if (ai->recovery_timer > 0) {
             ai->recovery_timer--;
             int8_t s = SIN_LUT[ai->car.angle];
@@ -96,25 +97,20 @@ void update_ai(void) {
             ai->car.vel_x += (int16_t)s >> 4;  
             ai->car.vel_y += (int16_t)c >> 4;
             ai->car.angle += 4 * ai->recovery_turn_dir;
-            
-            // Movement for recovery is simpler (ignoring collision logic for exit)
             ai->car.x += ai->car.vel_x;
             ai->car.y += ai->car.vel_y;
-            goto post_movement_ai; 
+            continue; 
         }
 
-        // Update Rebound Stun Timer
         if (ai->rebound_timer > 0) ai->rebound_timer--;
 
         // --- 2. STUCK DETECTION ---
         ai->stuck_timer++;
         if (ai->stuck_timer >= 30) {
             ai->stuck_timer = 0;
-            int16_t cur_x = ai->car.x >> 8;
-            int16_t cur_y = ai->car.y >> 8;
-            int16_t dx = abs(cur_x - ai->last_recorded_x);
-            int16_t dy = abs(cur_y - ai->last_recorded_y);
-            if (dx < 3 && dy < 3) {
+            int16_t cur_x = (int16_t)(ai->car.x >> 8);
+            int16_t cur_y = (int16_t)(ai->car.y >> 8);
+            if (abs(cur_x - ai->last_recorded_x) < 3 && abs(cur_y - ai->last_recorded_y) < 3) {
                 ai->recovery_timer = 45;
                 ai->recovery_turn_dir = (rand() & 1) ? 1 : -1;
             }
@@ -122,52 +118,67 @@ void update_ai(void) {
             ai->last_recorded_y = cur_y;
         }
 
-        // --- 3. WAYPOINT & STEERING ---
-        int16_t target_x = waypoints[ai->current_waypoint].x + ai->offset_x;
-        int16_t target_y = waypoints[ai->current_waypoint].y + ai->offset_y;
-        int16_t dx = target_x - (ai->car.x >> 8);
-        int16_t dy = target_y - (ai->car.y >> 8);
-        if (((int32_t)dx * dx + (int32_t)dy * dy) < (40 * 40)) {
+        // --- 3. WAYPOINTS & THRUST ---
+        int16_t tx = waypoints[ai->current_waypoint].x + ai->offset_x;
+        int16_t ty = waypoints[ai->current_waypoint].y + ai->offset_y;
+        int16_t dx = tx - (int16_t)(ai->car.x >> 8);
+        int16_t dy = ty - (int16_t)(ai->car.y >> 8);
+
+        int16_t dist = abs(dx) + abs(dy);
+        if (dist < 50) { // 50 is a rough approximation of a 40px radius
             ai->current_waypoint = (ai->current_waypoint + 1) % NUM_WAYPOINTS;
         }
         
         uint8_t target_angle = (192 - atan2_8(dy, dx)) & 0xFF;
-        ai_steer(ai, target_angle);
-        
-        uint8_t angle_diff = abs((int8_t)(target_angle - ai->car.angle));
-        if (angle_diff > 32) ai_apply_thrust(ai, AI_REDUCED_THRUST_SHIFT);
-        else ai_apply_thrust(ai, AI_MAX_THRUST_SHIFT);
+        // ai_steer inline for speed
+        uint8_t diff = target_angle - ai->car.angle;
+        if (diff != 0) {
+            if (diff < 128) ai->car.angle += AI_TURN_SPEED;
+            else ai->car.angle -= AI_TURN_SPEED;
+        }
+
+        if (ai->rebound_timer == 0) {
+            int8_t s = SIN_LUT[ai->car.angle];
+            int8_t c = SIN_LUT[(ai->car.angle + 64) & 0xFF];
+            uint8_t shift = (abs((int8_t)(target_angle - ai->car.angle)) > 32) ? AI_REDUCED_THRUST_SHIFT : AI_MAX_THRUST_SHIFT;
+            ai->car.vel_x -= (int16_t)s >> shift;
+            ai->car.vel_y -= (int16_t)c >> shift;
+        }
 
         // --- 4. FRICTION ---
-        int16_t drag_x = (ai->car.vel_x >> FRICTION_SHIFT);
-        int16_t drag_y = (ai->car.vel_y >> FRICTION_SHIFT);
-        if (drag_x == 0 && ai->car.vel_x != 0) drag_x = (ai->car.vel_x > 0) ? 1 : -1;
-        if (drag_y == 0 && ai->car.vel_y != 0) drag_y = (ai->car.vel_y > 0) ? 1 : -1;
-        ai->car.vel_x -= drag_x;
-        ai->car.vel_y -= drag_y;
+        int16_t dvx = (ai->car.vel_x >> FRICTION_SHIFT);
+        int16_t dvy = (ai->car.vel_y >> FRICTION_SHIFT);
+        if (dvx == 0 && ai->car.vel_x != 0) dvx = (ai->car.vel_x > 0) ? 1 : -1;
+        if (dvy == 0 && ai->car.vel_y != 0) dvy = (ai->car.vel_y > 0) ? 1 : -1;
+        ai->car.vel_x -= dvx; ai->car.vel_y -= dvy;
 
-        // --- 5. COMPONENT-WISE MOVEMENT WITH BOUNCE/PUSH-OUT ---
+        // --- 5. OPTIMIZED AXIS MOVEMENT ---
+        int16_t px = (int16_t)(ai->car.x >> 8);
+        int16_t py = (int16_t)(ai->car.y >> 8);
 
-        // X-Axis
-        int32_t old_x = ai->car.x;
-        ai->car.x += ai->car.vel_x;
-        if (check_collision_at_pos(ai->car.x, ai->car.y, ai->car.angle) == TERRAIN_WALL) {
-            ai->car.vel_x = (ai->car.vel_x > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
-            ai->car.x = old_x + ((ai->car.vel_x > 0) ? PUSH_OUT_DIST : -PUSH_OUT_DIST);
-            ai->rebound_timer = REBOUND_STUN;
+        if (ai->car.vel_x != 0) {
+            int16_t nx = (int16_t)((ai->car.x + ai->car.vel_x) >> 8);
+            if (is_colliding_ai(nx, py)) {
+                ai->car.vel_x = (ai->car.vel_x > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
+                ai->car.x += (ai->car.vel_x > 0 ? PUSH_OUT_DIST : -PUSH_OUT_DIST);
+                ai->rebound_timer = REBOUND_STUN;
+            } else {
+                ai->car.x += ai->car.vel_x;
+                px = nx;
+            }
+        }
+        if (ai->car.vel_y != 0) {
+            int16_t ny = (int16_t)((ai->car.y + ai->car.vel_y) >> 8);
+            if (is_colliding_ai(px, ny)) {
+                ai->car.vel_y = (ai->car.vel_y > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
+                ai->car.y += (ai->car.vel_y > 0 ? PUSH_OUT_DIST : -PUSH_OUT_DIST);
+                ai->rebound_timer = REBOUND_STUN;
+            } else {
+                ai->car.y += ai->car.vel_y;
+            }
         }
 
-        // Y-Axis
-        int32_t old_y = ai->car.y;
-        ai->car.y += ai->car.vel_y;
-        if (check_collision_at_pos(ai->car.x, ai->car.y, ai->car.angle) == TERRAIN_WALL) {
-            ai->car.vel_y = (ai->car.vel_y > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
-            ai->car.y = old_y + ((ai->car.vel_y > 0) ? PUSH_OUT_DIST : -PUSH_OUT_DIST);
-            ai->rebound_timer = REBOUND_STUN;
-        }
-
-post_movement_ai:
-        // Clamp to world bounds
+        // Clamp world bounds
         if (ai->car.x < 0x800) ai->car.x = 0x800;
         if (ai->car.x > 131072L - 0x800) ai->car.x = 131072L - 0x800;
         if (ai->car.y < 0x800) ai->car.y = 0x800;
@@ -175,41 +186,33 @@ post_movement_ai:
     }
 }
 
-
+// Optimized Sequential Writes for AI
 void draw_ai_cars(int16_t scroll_x, int16_t scroll_y) {
-    extern const int8_t SIN_LUT[256];
-
     for (uint8_t i = 0; i < NUM_AI_CARS; i++) {
         AICar *ai = &ai_cars[i];
         
-        // Calculate the XRAM address for this specific car's config struct
-        // Uses sprite_index (1, 2, 3) to offset from the Player's config at index 0
-        uint16_t config_addr = REDRACER_CONFIG + (sizeof(vga_mode4_asprite_t) * ai->sprite_index);
-        
-        // Calculate screen position: (World Position) + (Map Origin Screen Offset)
-        int16_t screen_x = (int16_t)(ai->car.x >> 8) + scroll_x;
-        int16_t screen_y = (int16_t)(ai->car.y >> 8) + scroll_y;
-        
-        // --- 1. SET ROTATION MATRIX ---
-        // Scale to 8.8 (1.0 = 256)
         int16_t s = (int16_t)SIN_LUT[ai->car.angle] << 1;
         int16_t c = (int16_t)SIN_LUT[(ai->car.angle + 64) & 0xFF] << 1;
-        
-        xram0_struct_set(config_addr, vga_mode4_asprite_t, transform[0], c);  // SX
-        xram0_struct_set(config_addr, vga_mode4_asprite_t, transform[1], -s); // SHY
-        xram0_struct_set(config_addr, vga_mode4_asprite_t, transform[3], s);  // SHX
-        xram0_struct_set(config_addr, vga_mode4_asprite_t, transform[4], c);  // SY
-        
-        // --- 2. SET PIVOT TRANSLATION ---
-        // Formula to rotate 16x16 around center (8,8)
         int16_t tx = 8 * (256 - c + s);
         int16_t ty = 8 * (256 - c - s);
-        
-        xram0_struct_set(config_addr, vga_mode4_asprite_t, transform[2], tx);
-        xram0_struct_set(config_addr, vga_mode4_asprite_t, transform[5], ty);
-        
-        // --- 3. SET SCREEN POSITION ---
-        xram0_struct_set(config_addr, vga_mode4_asprite_t, x_pos_px, screen_x);
-        xram0_struct_set(config_addr, vga_mode4_asprite_t, y_pos_px, screen_y);
+        int16_t sx = (int16_t)(ai->car.x >> 8) + scroll_x;
+        int16_t sy = (int16_t)(ai->car.y >> 8) + scroll_y;
+
+        // Correct Struct Layout per Docs: transform[6], x, y, ptr, log, opacity
+        RIA.addr0 = REDRACER_CONFIG + (sizeof(vga_mode4_asprite_t) * ai->sprite_index);
+        RIA.step0 = 1;
+
+        // Transform [0..5]
+        RIA.rw0 = c & 0xFF;    RIA.rw0 = c >> 8;    // SX
+        RIA.rw0 = (-s) & 0xFF; RIA.rw0 = (-s) >> 8; // SHY
+        RIA.rw0 = tx & 0xFF;   RIA.rw0 = tx >> 8;   // TX
+        RIA.rw0 = s & 0xFF;    RIA.rw0 = s >> 8;    // SHX
+        RIA.rw0 = c & 0xFF;    RIA.rw0 = c >> 8;    // SY
+        RIA.rw0 = ty & 0xFF;   RIA.rw0 = ty >> 8;   // TY
+        // Position
+        RIA.rw0 = sx & 0xFF;   RIA.rw0 = sx >> 8;
+        RIA.rw0 = sy & 0xFF;   RIA.rw0 = sy >> 8;
+        // ptr, log_size, opacity are usually already set in init_ai and don't need frame-by-frame updates,
+        // but for safety in a sequential write, we stop here or continue if values changed.
     }
 }

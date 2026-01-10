@@ -3,20 +3,12 @@
 #include "player.h"
 #include "constants.h"
 #include "input.h"
-#include <stdio.h>
 #include <stdlib.h>
 #include "track.h"
 #include "sound.h"
 
-// Starting position for the player's car
-uint8_t startX = SCREEN_WIDTH / 2;
-uint8_t startY = SCREEN_HEIGHT / 2; 
-
-// Tuning Constants for "Feel"
-#define BOUNCE_IMPULSE 0x080  // 1.0 pixels of instant velocity kick
-#define PUSH_OUT_DIST  0x060  // 0.5 pixels of immediate physical move
-#define REBOUND_STUN   4      // Frames to ignore player thrust after hit
-
+// External Sin table
+extern const int8_t SIN_LUT[256];
 Car car = {0};
 
 // Pre-calculated Sin table (scaled to 127)
@@ -38,11 +30,6 @@ const int8_t SIN_LUT[256] = {
  -89, -87, -84, -82, -80, -77, -75, -72, -70, -67, -64, -62, -59, -56, -53, -50,
  -48, -45, -42, -39, -36, -33, -30, -27, -24, -21, -18, -15, -11,  -8,  -5,  -2,
 };
-// Cosine is just Sine with a 90-degree (64 step) offset
-// cos_val = SIN_LUT[(angle + 64) & 0xFF];
-
-// Forward declaration (made non-static for AI to use)
-uint8_t check_collision_at_pos(int32_t x, int32_t y, uint8_t angle);
 
 void init_player(void) {
     // Initialize player car position and velocity
@@ -55,47 +42,44 @@ void init_player(void) {
 
 }
 
-#define HBOX 4 // 10x10 hitbox (Radius 5)
+uint8_t rebound_timer = 0;
 
-// Better Hitbox: Checks 8 points around the perimeter to catch thin walls
-uint8_t is_colliding(int32_t x_fixed, int32_t y_fixed) {
-    int16_t cx = (x_fixed >> 8) + 8;
-    int16_t cy = (y_fixed >> 8) + 8;
+// Tuning
+#define BOUNCE_IMPULSE 0x080 
+#define PUSH_OUT_DIST  0x060 
+#define REBOUND_STUN   4     
+#define HBOX           4     // 8x8 detection area
 
-    if (get_terrain_at(cx - HBOX, cy - HBOX) == TERRAIN_WALL) return 1;
-    if (get_terrain_at(cx + HBOX, cy - HBOX) == TERRAIN_WALL) return 1;
-    if (get_terrain_at(cx - HBOX, cy + HBOX) == TERRAIN_WALL) return 1;
-    if (get_terrain_at(cx + HBOX, cy + HBOX) == TERRAIN_WALL) return 1;
-    if (get_terrain_at(cx,        cy - HBOX) == TERRAIN_WALL) return 1;
-    if (get_terrain_at(cx,        cy + HBOX) == TERRAIN_WALL) return 1;
-    if (get_terrain_at(cx - HBOX, cy       ) == TERRAIN_WALL) return 1;
-    if (get_terrain_at(cx + HBOX, cy       ) == TERRAIN_WALL) return 1;
+// OPTIMIZED: Checks 4 corners using 16-bit pixel coordinates
+// This replaces the 49-lookup nested loop
+static uint8_t is_colliding_fast(int16_t px, int16_t py) {
+    int16_t cx = px + 8; // Center of 16x16
+    int16_t cy = py + 8;
+    #define H 5 // 10x10 hitbox
+
+    // Corners
+    if (get_terrain_at(cx - H, cy - H) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx + H, cy - H) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx - H, cy + H) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx + H, cy + H) == TERRAIN_WALL) return 1;
+    // Midpoints
+    if (get_terrain_at(cx,     cy - H) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx,     cy + H) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx - H, cy    ) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx + H, cy    ) == TERRAIN_WALL) return 1;
 
     return 0;
 }
 
-uint8_t rebound_timer = 0; // Global or in Car struct
-
 void update_player(Car *p) {
-    // --- 1. HANDLE ROTATION ---
+    // 1. Rotation
     if (is_action_pressed(0, ACTION_ROTATE_LEFT)) p->angle += TURN_SPEED;
     if (is_action_pressed(0, ACTION_ROTATE_RIGHT)) p->angle -= TURN_SPEED;
 
     int8_t s = SIN_LUT[p->angle];
     int8_t c = SIN_LUT[(p->angle + 64) & 0xFF];
 
-    // --- 2. STATIC OVERLAP CHECK (The "Un-Sticker") ---
-    // If rotation pushed a corner into a wall, nudge out but DO NOT stun.
-    if (is_colliding(p->x, p->y)) {
-        // Nudge based on current heading to clear the wall
-        p->x += (int32_t)s << 1; 
-        p->y += (int32_t)c << 1;
-        // Kill velocity so we don't "vibrate" inside the wall
-        p->vel_x = 0;
-        p->vel_y = 0;
-    }
-
-    // --- 3. HANDLE THRUST (Input check) ---
+    // 2. Thrust & Friction
     if (rebound_timer > 0) {
         rebound_timer--;
     } else {
@@ -109,93 +93,72 @@ void update_player(Car *p) {
         }
     }
 
-    // --- 4. FRICTION ---
     int16_t dvx = (p->vel_x >> FRICTION_SHIFT);
     int16_t dvy = (p->vel_y >> FRICTION_SHIFT);
     if (dvx == 0 && p->vel_x != 0) dvx = (p->vel_x > 0) ? 1 : -1;
     if (dvy == 0 && p->vel_y != 0) dvy = (p->vel_y > 0) ? 1 : -1;
-    p->vel_x -= dvx; 
-    p->vel_y -= dvy;
+    p->vel_x -= dvx; p->vel_y -= dvy;
 
-    // --- 5. COMPONENT-WISE MOVEMENT (Sliding) ---
-    
-    // TRY X MOVEMENT
+    // --- 3. OPTIMIZED COLLISION ---
+    // Convert 32-bit position to 16-bit pixels ONCE
+    int16_t cur_px_x = (int16_t)(p->x >> 8);
+    int16_t cur_px_y = (int16_t)(p->y >> 8);
+
+    // Try X
     if (p->vel_x != 0) {
-        int32_t next_x = p->x + p->vel_x;
-        if (is_colliding(next_x, p->y)) {
-            // HIT X: Bounce and Stun only if we had significant speed
+        int16_t next_px_x = (int16_t)((p->x + p->vel_x) >> 8);
+        if (is_colliding_fast(next_px_x, cur_px_y)) {
             p->vel_x = (p->vel_x > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
             p->x += (p->vel_x > 0 ? PUSH_OUT_DIST : -PUSH_OUT_DIST);
             rebound_timer = REBOUND_STUN;
         } else {
-            p->x = next_x;
+            p->x += p->vel_x;
+            cur_px_x = next_px_x; // Update local pixel for Y-check
         }
     }
 
-    // TRY Y MOVEMENT
+    // Try Y
     if (p->vel_y != 0) {
-        int32_t next_y = p->y + p->vel_y;
-        if (is_colliding(p->x, next_y)) {
-            // HIT Y: Bounce and Stun
+        int16_t next_px_y = (int16_t)((p->y + p->vel_y) >> 8);
+        if (is_colliding_fast(cur_px_x, next_px_y)) {
             p->vel_y = (p->vel_y > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
             p->y += (p->vel_y > 0 ? PUSH_OUT_DIST : -PUSH_OUT_DIST);
             rebound_timer = REBOUND_STUN;
         } else {
-            p->y = next_y;
+            p->y += p->vel_y;
         }
     }
 
-    // --- 6. TERRAIN & AUDIO ---
-    if (get_terrain_at((p->x >> 8) + 8, (p->y >> 8) + 8) == TERRAIN_GRASS) {
+    // Terrain speed check (only center point)
+    if (get_terrain_at(cur_px_x + 8, (int16_t)(p->y >> 8) + 8) == TERRAIN_GRASS) {
         p->vel_x -= (p->vel_x >> 3);
         p->vel_y -= (p->vel_y >> 3);
     }
-    update_engine_sound((uint16_t)(abs(p->vel_x) + abs(p->vel_y)));
 
-    // 7. CLAMPING
-    if (p->x < 0x800) p->x = 0x800;
-    if (p->x > 131072L - 0x800) p->x = 131072L - 0x800;
-    if (p->y < 0x800) p->y = 0x800;
-    if (p->y > 98304L - 0x800) p->y = 98304L - 0x800;
+    update_engine_sound((uint16_t)(abs(p->vel_x) + abs(p->vel_y)));
 }
 
+// OPTIMIZED: Direct XRAM writes instead of struct_set overhead
 void draw_player(Car *p, int16_t screen_x, int16_t screen_y) {
-    uint16_t ptr = REDRACER_CONFIG;
-
-    // 1. Get Sin/Cos and scale to your ~255 range (127 * 2)
     int16_t s = (int16_t)SIN_LUT[p->angle] << 1;
     int16_t c = (int16_t)SIN_LUT[(p->angle + 64) & 0xFF] << 1;
-
-    // 2. Set Rotation Matrix (SX, SHY, SHX, SY)
-    xram0_struct_set(ptr, vga_mode4_asprite_t, transform[0],  c); // SX
-    xram0_struct_set(ptr, vga_mode4_asprite_t, transform[1], -s); // SHY
-    xram0_struct_set(ptr, vga_mode4_asprite_t, transform[3],  s); // SHX
-    xram0_struct_set(ptr, vga_mode4_asprite_t, transform[4],  c); // SY
-
-    // 3. Reconciled Pivot Translation (Logic from t2_fix4)
-    // We use 8 as the multiplier for a 16x16 sprite centered at 8,8
-    // Note: 256 is the RIA 1.0 identity scale
     int16_t tx = 8 * (256 - c + s);
     int16_t ty = 8 * (256 - c - s);
 
-    xram0_struct_set(ptr, vga_mode4_asprite_t, transform[2], tx);
-    xram0_struct_set(ptr, vga_mode4_asprite_t, transform[5], ty);
+    RIA.addr0 = REDRACER_CONFIG; 
+    RIA.step0 = 1;
 
-    // 4. Update Position (Whole pixels)
-    // xram0_struct_set(ptr, vga_mode4_asprite_t, x_pos_px, (int16_t)(p->x >> 8));
-    // xram0_struct_set(ptr, vga_mode4_asprite_t, y_pos_px, (int16_t)(p->y >> 8));
-
-    // Set the sprite position to the calculated screen coordinates
-    xram0_struct_set(ptr, vga_mode4_asprite_t, x_pos_px, screen_x);
-    xram0_struct_set(ptr, vga_mode4_asprite_t, y_pos_px, screen_y);
+    // Fast sequential write to the vga_mode4_asprite_t structure
+    RIA.rw0 = c & 0xFF;        RIA.rw0 = c >> 8;        // transform[0] (sx)
+    RIA.rw0 = (-s) & 0xFF;     RIA.rw0 = (-s) >> 8;     // transform[1] (shy)
+    RIA.rw0 = tx & 0xFF;       RIA.rw0 = tx >> 8;       // transform[2] (tx)
+    RIA.rw0 = s & 0xFF;        RIA.rw0 = s >> 8;        // transform[3] (shx)
+    RIA.rw0 = c & 0xFF;        RIA.rw0 = c >> 8;        // transform[4] (sy)
+    RIA.rw0 = ty & 0xFF;       RIA.rw0 = ty >> 8;       // transform[5] (ty)
+    RIA.rw0 = screen_x & 0xFF; RIA.rw0 = screen_x >> 8; // x
+    RIA.rw0 = screen_y & 0xFF; RIA.rw0 = screen_y >> 8; // y
 }
 
-// We use the sin/cos values scaled by the LUT (127)
-// To get pixel offsets, we multiply by the distance and divide by 127 (shift 7)
-
-// Helper function to check if any collision point hits a wall at given position/angle
-// Uses a solid rectangular hitbox - checks every pixel, no gaps
-// Made non-static so AI can use it
 uint8_t check_collision_at_pos(int32_t x, int32_t y, uint8_t angle) {
     (void)angle;  // Ignore rotation - use axis-aligned box
     
@@ -221,36 +184,19 @@ uint8_t check_collision_at_pos(int32_t x, int32_t y, uint8_t angle) {
     return found_grass ? TERRAIN_GRASS : TERRAIN_ROAD;
 }
 
-void check_collisions(Car *p) {
-    uint8_t terrain = check_collision_at_pos(p->x, p->y, p->angle);
-    
-    if (terrain == TERRAIN_GRASS) {
-        // Slowdown on grass
-        p->vel_x -= (p->vel_x >> 4);
-        p->vel_y -= (p->vel_y >> 4);
-    }
-    // Wall collisions are now handled in update_player() before movement
-}
-
 void update_camera(Car *p) {
-    int16_t target_x = (p->x >> 8) - 160; // 160 is half of 320
-    int16_t target_y = (p->y >> 8) - 120; // 120 is half of 240
+    int16_t car_px_x = (int16_t)(p->x >> 8);
+    int16_t car_px_y = (int16_t)(p->y >> 8);
+    int16_t target_x = 160 - car_px_x;
+    int16_t target_y = 120 - car_px_y;
 
-    // Clamp camera to map edges (Map 512x384 - Screen 320x240)
-    if (target_x < 0) target_x = 0;
-    if (target_x > 192) target_x = 192;
-    if (target_y < 0) target_y = 0;
-    if (target_y > 144) target_y = 144;
+    if (target_x > 0) target_x = 0;
+    if (target_x < -192) target_x = -192;
+    if (target_y > 0) target_y = 0;
+    if (target_y < -144) target_y = -144;
 
-    // Update XRAM Config for the Tile Plane
-    xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, x_pos_px, target_x);
-    xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, y_pos_px, target_y);
-    
-    // IMPORTANT: You must also subtract the camera offset when drawing the car!
-    // screen_x = car_world_x - camera_x
-    uint16_t screen_x = (p->x >> 8) - target_x;
-    uint16_t screen_y = (p->y >> 8) - target_y;
-    
-    xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, x_pos_px, screen_x);
-    xram0_struct_set(REDRACER_CONFIG, vga_mode4_asprite_t, y_pos_px, screen_y);
+    // Use shadow registers in main.c instead of writing XRAM here twice
+    extern int16_t next_scroll_x, next_scroll_y;
+    next_scroll_x = target_x;
+    next_scroll_y = target_y;
 }
