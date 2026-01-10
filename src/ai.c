@@ -193,8 +193,11 @@ void draw_ai_cars(int16_t scroll_x, int16_t scroll_y) {
         
         int16_t s = (int16_t)SIN_LUT[ai->car.angle] << 1;
         int16_t c = (int16_t)SIN_LUT[(ai->car.angle + 64) & 0xFF] << 1;
-        int16_t tx = 8 * (256 - c + s);
-        int16_t ty = 8 * (256 - c - s);
+        
+        uint8_t ang = ai->car.angle;
+        int16_t tx = TX_LUT[ang];
+        int16_t ty = TY_LUT[ang];
+        
         int16_t sx = (int16_t)(ai->car.x >> 8) + scroll_x;
         int16_t sy = (int16_t)(ai->car.y >> 8) + scroll_y;
 

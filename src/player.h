@@ -19,6 +19,8 @@ extern Car car;
 
 // This table maps 0-255 (angle) to -127 to 127 (signed fraction)
 extern const int8_t SIN_LUT[256];
+extern const int16_t TX_LUT[256];
+extern const int16_t TY_LUT[256];
 
 extern void init_player(void);
 extern void update_player(Car *p);
