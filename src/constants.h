@@ -33,6 +33,8 @@
 
 extern unsigned REDRACER_CONFIG;  // RedRacer Sprite Configuration
 extern unsigned TRACK_CONFIG;     // Track Tilemap Configuration
+extern unsigned TEXT_CONFIG;      // Text Overlay Configuration
+extern unsigned text_message_addr; // Start address for text messages in XRAM
 
 // Track tile map
 #define TRACK_MAP_WIDTH_TILES   64

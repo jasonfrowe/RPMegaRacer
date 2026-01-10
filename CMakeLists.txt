@@ -40,4 +40,5 @@ target_sources(RPMegaRacer PRIVATE
     src/ai.c
     src/collision.c
     src/hud.c
+    src/racelogic.c
 )

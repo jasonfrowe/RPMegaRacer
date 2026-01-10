@@ -8,6 +8,7 @@
 #include "sound.h"
 #include <stdio.h>
 #include "ai.h"
+#include "racelogic.h"
 
 // External Sin table
 extern const int8_t SIN_LUT[256];
@@ -162,6 +163,13 @@ void update_player(Car *p) {
     // This is our "Undo" buffer if we hit a wall or get rammed
     uint16_t safe_x = p->x;
     uint16_t safe_y = p->y;
+
+    if (state_timer > 300) {
+        // Optional: reset velocity here to ensure they don't creep
+        p->vel_x = 0;
+        p->vel_y = 0;
+        return;
+    }
 
     // 2. HANDLE ROTATION & INPUT
     if (is_action_pressed(0, ACTION_PAUSE)) { rescue_player(p); return; }

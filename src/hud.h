@@ -19,5 +19,13 @@ extern char message[MESSAGE_LENGTH + 1]; // +1 for null terminator
 #define HUD_COL_CYAN    14  // Bright Cyan   (Fixed)
 #define HUD_COL_WHITE   15  // Bright White
 
+#define HUD_ROW 0
+#define HUD_COL_LAPS 1
+#define HUD_COL_MSG  15
+#define HUD_COL_TIME 30
+
+extern void hud_print(uint8_t x, uint8_t y, const char* str, uint8_t fg, uint8_t bg);
+extern void hud_refresh_stats(uint8_t lap, uint16_t speed);
+extern void update_countdown_display(uint16_t delay);
 
 #endif // HUD_H

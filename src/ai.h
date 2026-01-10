@@ -22,7 +22,6 @@ typedef struct {
     int8_t offset_x;           // Random offset from waypoint
     int8_t offset_y;           // Random offset from waypoint
     uint8_t sprite_index;      // Which sprite config (1-3)
-    uint16_t startup_delay;    // Delay before AI starts driving (frames)
     uint8_t stuck_timer;       // Frames spent stuck (for detection)
     uint8_t recovery_timer;    // Frames left in recovery mode
     int8_t recovery_turn_dir;  // Turn direction during recovery: +1 or -1

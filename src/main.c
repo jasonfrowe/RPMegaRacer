@@ -10,6 +10,8 @@
 #include "ai.h"
 #include "collision.h"
 #include "hud.h"
+#include "racelogic.h"
+#include <stdlib.h>
 
 unsigned REDRACER_CONFIG;    // RedRacer Sprite Configuration
 unsigned TRACK_MAP_START;    // Start of track map data in XRAM
@@ -230,6 +232,10 @@ void update_camera_and_ui(void) {
     // Save for the START of the next frame
     next_scroll_x = target_x;
     next_scroll_y = target_y;
+
+    uint16_t player_speed = abs(car.vel_x) + abs(car.vel_y);
+    hud_refresh_stats(car.laps, player_speed);
+
 }
 
 int main(void) {
@@ -308,7 +314,6 @@ int main(void) {
         
         draw_player(&car, screen_x, screen_y);
         draw_ai_cars(next_scroll_x, next_scroll_y); // Passing next_scroll_x/y inside this function is a good idea too
-
 
         // RIA.addr0 = PALETTE_ADDR + 2;
         // RIA.step0 = 1;

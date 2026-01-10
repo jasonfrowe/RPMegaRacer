@@ -4,6 +4,9 @@
 #include "player.h"
 #include <rp6502.h>
 #include <stdlib.h>
+#include "racelogic.h"
+#include "hud.h"
+#include "input.h"
 
 #define AI_TURN_SPEED 3
 #define AI_MAX_THRUST_SHIFT 3      
@@ -66,7 +69,6 @@ void init_ai(void) {
         ai_cars[i].car.angle = 64;  
         ai_cars[i].current_waypoint = 1;  
         ai_cars[i].sprite_index = i + 1;  
-        ai_cars[i].startup_delay = 600;  
         ai_cars[i].last_recorded_x = 245;  
         ai_cars[i].last_recorded_y = start_positions[i];
     }
@@ -75,12 +77,34 @@ void init_ai(void) {
 static uint8_t ai_brain_turn = 0; // Rotates 0, 1, 2
 
 void update_ai(void) {
+    // Manage which AI car gets to "think" this frame
     if (++ai_brain_turn >= NUM_AI_CARS) ai_brain_turn = 0;
+
+    // Check for the Start Trigger
+    if (!countdown_active) {
+        hud_print(13, 5, " PRESS FIRE TO START ", HUD_COL_WHITE, HUD_COL_BG);
+        if (is_action_pressed(0, ACTION_FIRE)) {
+            countdown_active = true;
+            // Clear the "Press Fire" message
+            hud_print(13, 5, "                     ", 0, 0);
+        }
+        return; // Don't do anything else until they press Fire
+    }
+
+    // Global Timer Management (Only runs once per frame)
+    if (state_timer > 0) {
+        state_timer--;
+        update_countdown_display(state_timer);
+    }
 
     for (uint8_t i = 0; i < NUM_AI_CARS; i++) {
         AICar *ai = &ai_cars[i];
-        if (ai->startup_delay > 0) {
-            ai->startup_delay--;
+        // AI remains stationary unless racing
+        // If the countdown is still running, AI stays still
+        if (state_timer > 300) {
+            // Optional: reset velocity here to ensure they don't creep
+            ai->car.vel_x = 0;
+            ai->car.vel_y = 0;
             continue;
         }
 
@@ -136,10 +160,12 @@ void update_ai(void) {
 
         // --- 3. PHYSICS (Every Frame) ---
         // Turn toward target
-        uint8_t diff = ai->target_angle - ai->car.angle;
-        if (diff != 0) {
-            if (diff < 128) ai->car.angle += AI_TURN_SPEED;
-            else ai->car.angle -= AI_TURN_SPEED;
+        if (state_timer < 270) { // Make a clean start after countdown
+            uint8_t diff = ai->target_angle - ai->car.angle;
+            if (diff != 0) {
+                if (diff < 128) ai->car.angle += AI_TURN_SPEED;
+                else ai->car.angle -= AI_TURN_SPEED;
+            }
         }
 
         // Thrust
