@@ -26,6 +26,8 @@ typedef struct {
     uint8_t stuck_timer;       // Frames spent stuck (for detection)
     uint8_t recovery_timer;    // Frames left in recovery mode
     int8_t recovery_turn_dir;  // Turn direction during recovery: +1 or -1
+    int16_t last_recorded_x;   // Position 30 frames ago (for stuck detection)
+    int16_t last_recorded_y;
 } AICar;
 
 // External declarations

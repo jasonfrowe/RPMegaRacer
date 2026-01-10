@@ -119,6 +119,8 @@ void init_ai(void) {
         ai_cars[i].stuck_timer = 0;  // Not stuck initially
         ai_cars[i].recovery_timer = 0;
         ai_cars[i].recovery_turn_dir = 1;
+        ai_cars[i].last_recorded_x = 245;  // Starting X
+        ai_cars[i].last_recorded_y = start_positions[i];
     }
 }
 
@@ -163,53 +165,72 @@ void update_ai(void) {
             dy = target_y - car_y;
         }
         
-        // --- RECOVERY STATE MACHINE ---
-        // Check current state: speed and wall collision
-        int16_t abs_vel_x = (ai->car.vel_x >> 8);
-        int16_t abs_vel_y = (ai->car.vel_y >> 8);
-        if (abs_vel_x < 0) abs_vel_x = -abs_vel_x;
-        if (abs_vel_y < 0) abs_vel_y = -abs_vel_y;
-        uint16_t speed = abs_vel_x + abs_vel_y;
-        uint8_t terrain = check_collision_at_pos(ai->car.x, ai->car.y, ai->car.angle);
-        
+        // --- 1. RECOVERY STATE CHECK (LATCHED) ---
         if (ai->recovery_timer > 0) {
-            // IN RECOVERY MODE: Directly move car to escape wall
             ai->recovery_timer--;
             
-            // Turn in chosen direction
-            ai->car.angle += AI_TURN_SPEED * ai->recovery_turn_dir;
-            
-            // Directly move car backwards (ignore collision!)
-            // This is the only way to escape when pressed against a wall
+            // RECOVERY BEHAVIOR: Reverse and Turn
+            // In CCW 0=Up system, forward is -= sin, -= cos
+            // So reverse is += sin, += cos
             extern const int8_t SIN_LUT[256];
             int8_t s = SIN_LUT[ai->car.angle];
             int8_t c = SIN_LUT[(ai->car.angle + 64) & 0xFF];
             
-            // Move position directly (not velocity) - 1 pixel per frame backwards
-            ai->car.x += (int32_t)s << 5;  // ~0.5 pixel per frame
-            ai->car.y += (int32_t)c << 5;
+            ai->car.vel_x += (int16_t)s >> 4;  // Slow reverse
+            ai->car.vel_y += (int16_t)c >> 4;
             
-            // Kill velocity during recovery
-            ai->car.vel_x = 0;
-            ai->car.vel_y = 0;
+            // Hard turn while reversing
+            ai->car.angle += 4 * ai->recovery_turn_dir;
             
-            // Recovery ends when timer hits 0
+            // Apply friction during recovery too
+            int16_t drag_x = (ai->car.vel_x >> FRICTION_SHIFT);
+            int16_t drag_y = (ai->car.vel_y >> FRICTION_SHIFT);
+            if (drag_x == 0 && ai->car.vel_x != 0) drag_x = (ai->car.vel_x > 0) ? 1 : -1;
+            if (drag_y == 0 && ai->car.vel_y != 0) drag_y = (ai->car.vel_y > 0) ? 1 : -1;
+            ai->car.vel_x -= drag_x;
+            ai->car.vel_y -= drag_y;
             
-        } else {
-            // NORMAL MODE: Check if we're getting stuck
-            uint8_t is_stuck = (speed < 2 && terrain == TERRAIN_WALL);
+            // Apply velocity to position (no collision check during recovery!)
+            ai->car.x += ai->car.vel_x;
+            ai->car.y += ai->car.vel_y;
             
-            if (is_stuck) {
-                ai->stuck_timer++;
-                if (ai->stuck_timer > 20) {  // Stuck for 20 frames
-                    ai->recovery_timer = 45;  // Fixed 45 frame recovery
-                    ai->stuck_timer = 0;
-                    ai->recovery_turn_dir = (rand() & 1) ? 1 : -1;
-                }
-            } else {
-                ai->stuck_timer = 0;
+            // Clamp to world bounds
+            if (ai->car.x < 0) ai->car.x = 0;
+            if (ai->car.x > 131072L) ai->car.x = 131072L;
+            if (ai->car.y < 0) ai->car.y = 0;
+            if (ai->car.y > 98304L) ai->car.y = 98304L;
+            
+            // EXIT: While in recovery, ignore waypoints entirely
+            continue;
+        }
+        
+        // --- 2. STUCK DETECTION (Position-based, every 30 frames) ---
+        ai->stuck_timer++;
+        if (ai->stuck_timer >= 30) {
+            ai->stuck_timer = 0;
+            
+            int16_t cur_x = ai->car.x >> 8;
+            int16_t cur_y = ai->car.y >> 8;
+            
+            int16_t delta_x = cur_x - ai->last_recorded_x;
+            int16_t delta_y = cur_y - ai->last_recorded_y;
+            if (delta_x < 0) delta_x = -delta_x;
+            if (delta_y < 0) delta_y = -delta_y;
+            
+            // If position barely changed in 30 frames, we're stuck
+            if (delta_x < 3 && delta_y < 3) {
+                // WE ARE STUCK - commit to 45 frames of reversing
+                ai->recovery_timer = 45;
+                ai->recovery_turn_dir = (rand() & 1) ? 1 : -1;
             }
-            // Calculate target angle using standard atan2
+            
+            // Record current position for next check
+            ai->last_recorded_x = cur_x;
+            ai->last_recorded_y = cur_y;
+        }
+        
+        // --- 3. NORMAL WAYPOINT LOGIC ---
+        // Calculate target angle using standard atan2
             // 1. Get standard atan2 (0=Right, 64=Down, 128=Left, 192=Up)
             uint8_t standard_angle = atan2_8(dy, dx);
             
@@ -232,7 +253,6 @@ void update_ai(void) {
                 // Roughly aligned! Full speed
                 ai_apply_thrust(ai, AI_MAX_THRUST_SHIFT);
             }
-        }  // End of normal mode else block
         
         // Apply friction (always, both normal and recovery)
         int16_t drag_x = (ai->car.vel_x >> FRICTION_SHIFT);
