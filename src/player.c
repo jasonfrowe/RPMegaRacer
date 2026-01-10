@@ -12,6 +12,11 @@
 uint8_t startX = SCREEN_WIDTH / 2;
 uint8_t startY = SCREEN_HEIGHT / 2; 
 
+// Tuning Constants for "Feel"
+#define BOUNCE_IMPULSE 0x080  // 1.0 pixels of instant velocity kick
+#define PUSH_OUT_DIST  0x060  // 0.5 pixels of immediate physical move
+#define REBOUND_STUN   4      // Frames to ignore player thrust after hit
+
 Car car = {0};
 
 // Pre-calculated Sin table (scaled to 127)
@@ -50,82 +55,100 @@ void init_player(void) {
 
 }
 
+#define HBOX 4 // 10x10 hitbox (Radius 5)
+
+// Better Hitbox: Checks 8 points around the perimeter to catch thin walls
+uint8_t is_colliding(int32_t x_fixed, int32_t y_fixed) {
+    int16_t cx = (x_fixed >> 8) + 8;
+    int16_t cy = (y_fixed >> 8) + 8;
+
+    if (get_terrain_at(cx - HBOX, cy - HBOX) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx + HBOX, cy - HBOX) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx - HBOX, cy + HBOX) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx + HBOX, cy + HBOX) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx,        cy - HBOX) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx,        cy + HBOX) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx - HBOX, cy       ) == TERRAIN_WALL) return 1;
+    if (get_terrain_at(cx + HBOX, cy       ) == TERRAIN_WALL) return 1;
+
+    return 0;
+}
+
+uint8_t rebound_timer = 0; // Global or in Car struct
+
 void update_player(Car *p) {
-    // 1. Handle Rotation (no collision check - box is axis-aligned)
-    if (is_action_pressed(0, ACTION_ROTATE_LEFT)) {
-        p->angle += TURN_SPEED;
-    }
-    if (is_action_pressed(0, ACTION_ROTATE_RIGHT)) {
-        p->angle -= TURN_SPEED;
-    }
+    // 1. Handle Rotation (Allow rotation even during rebound)
+    if (is_action_pressed(0, ACTION_ROTATE_LEFT)) p->angle += TURN_SPEED;
+    if (is_action_pressed(0, ACTION_ROTATE_RIGHT)) p->angle -= TURN_SPEED;
 
-    // 2. Derive Sine and Cosine from the single SIN_LUT
-    // Standard: 0 = North. x = sin, y = -cos (because Y increases down)
-    int8_t sin_val = SIN_LUT[p->angle];
-    int8_t cos_val = SIN_LUT[(p->angle + 64) & 0xFF];
+    int8_t s = SIN_LUT[p->angle];
+    int8_t c = SIN_LUT[(p->angle + 64) & 0xFF];
 
-    // 3. Handle Thrust (Acceleration)
-    if (is_action_pressed(0, ACTION_THRUST)) {
-        // We add the thrust vector to the velocity
-        // We scale the LUT values (-127 to 127) to fit our 8.8 fixed point
-        p->vel_x -= (int16_t)sin_val >> THRUST_SCALER;
-        p->vel_y -= (int16_t)cos_val >> THRUST_SCALER;
-    }
-    
-    // Handle Reverse Thrust (backing up)
-    if (is_action_pressed(0, ACTION_REVERSE_THRUST)) {
-        // Opposite direction of thrust, slightly weaker
-        p->vel_x += (int16_t)sin_val >> (THRUST_SCALER + 1);
-        p->vel_y += (int16_t)cos_val >> (THRUST_SCALER + 1);
-    }
-
-    // 4. Apply Friction (Drag)
-    // This reduces velocity slightly every frame to simulate momentum
-    int16_t drag_x = (p->vel_x >> FRICTION_SHIFT);
-    int16_t drag_y = (p->vel_y >> FRICTION_SHIFT);
-
-    // If the proportional drag is 0 but the car is still moving, 
-    // force it to slow down by 1 unit.
-    if (drag_x == 0 && p->vel_x != 0) {
-        drag_x = (p->vel_x > 0) ? 1 : -1;
-    }
-    if (drag_y == 0 && p->vel_y != 0) {
-        drag_y = (p->vel_y > 0) ? 1 : -1;
-    }
-
-    p->vel_x -= drag_x;
-    p->vel_y -= drag_y;
-
-    // 3. Deadzone (Optional but recommended)
-    // If velocity is extremely low, just kill it to prevent "micro-drifting"
-    // if (p->vel_x < 4 && p->vel_x > -4) p->vel_x = 0;
-    // if (p->vel_y < 4 && p->vel_y > -4) p->vel_y = 0;
-
-    // 4. Apply Velocity to Position (with collision check)
-    // Position is 24.8, Velocity is 8.8. They add together perfectly.
-    int32_t new_x = p->x + p->vel_x;
-    int32_t new_y = p->y + p->vel_y;
-    
-    // Simple collision: if destination collides, don't move there
-    if (check_collision_at_pos(new_x, new_y, p->angle) == TERRAIN_WALL) {
-        // Don't move - just bounce velocity
-        p->vel_x = -(p->vel_x >> 2);
-        p->vel_y = -(p->vel_y >> 2);
+    // 2. Handle Thrust (Disable during rebound stun)
+    if (rebound_timer > 0) {
+        rebound_timer--;
     } else {
-        // No collision, apply movement
-        p->x = new_x;
-        p->y = new_y;
+        if (is_action_pressed(0, ACTION_THRUST)) {
+            p->vel_x -= (int16_t)s >> THRUST_SCALER;
+            p->vel_y -= (int16_t)c >> THRUST_SCALER;
+        }
+
+        // Handle Reverse Thrust (backing up)
+        if (is_action_pressed(0, ACTION_REVERSE_THRUST)) {
+            // Opposite direction of thrust, slightly weaker
+            p->vel_x += (int16_t)s >> (THRUST_SCALER + 1);
+            p->vel_y += (int16_t)c >> (THRUST_SCALER + 1);
+        }
+
     }
 
+    // 3. Friction
+    int16_t dvx = (p->vel_x >> FRICTION_SHIFT);
+    int16_t dvy = (p->vel_y >> FRICTION_SHIFT);
+    if (dvx == 0 && p->vel_x != 0) dvx = (p->vel_x > 0) ? 1 : -1;
+    if (dvy == 0 && p->vel_y != 0) dvy = (p->vel_y > 0) ? 1 : -1;
+    p->vel_x -= dvx; p->vel_y -= dvy;
+
+    // --- 4. STEP-WISE MOVEMENT WITH ARCADE BOUNCE ---
+    
+    // X-AXIS
+    int32_t old_x = p->x;
+    p->x += p->vel_x;
+    if (is_colliding(p->x, p->y)) {
+        // --- BOUNCE LOGIC ---
+        // A. Apply Impulse (Kick away from wall)
+        p->vel_x = (p->vel_x > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
+        
+        // B. Push-Out (Visual gap)
+        p->x = old_x + ((p->vel_x > 0) ? PUSH_OUT_DIST : -PUSH_OUT_DIST);
+        
+        // C. Stun (Arcade feedback)
+        rebound_timer = REBOUND_STUN;
+        // play_opl2_sfx(SFX_CRASH); // Assuming you have this
+    }
+
+    // Y-AXIS
+    int32_t old_y = p->y;
+    p->y += p->vel_y;
+    if (is_colliding(p->x, p->y)) {
+        p->vel_y = (p->vel_y > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
+        p->y = old_y + ((p->vel_y > 0) ? PUSH_OUT_DIST : -PUSH_OUT_DIST);
+        rebound_timer = REBOUND_STUN;
+        // play_opl2_sfx(SFX_CRASH);
+    }
+
+    // --- 5. POST-MOVE CHECKS ---
+    if (get_terrain_at((p->x >> 8) + 8, (p->y >> 8) + 8) == TERRAIN_GRASS) {
+        p->vel_x -= (p->vel_x >> 3);
+        p->vel_y -= (p->vel_y >> 3);
+    }
     update_engine_sound((uint16_t)(abs(p->vel_x) + abs(p->vel_y)));
 
-    // 5. Clamp to world map bounds (512x384)
-    // 512 in 8.8 is 512 * 256 = 131072 (0x20000)
-    // 384 in 8.8 is 384 * 256 = 98304 (0x18000)
-    if (p->x < 0) p->x = 0;
-    if (p->x > 131072L) p->x = 131072L;
-    if (p->y < 0) p->y = 0;
-    if (p->y > 98304L) p->y = 98304L;
+    // 6. World Clamping
+    if (p->x < 0x800) p->x = 0x800;
+    if (p->x > 131072L - 0x800) p->x = 131072L - 0x800;
+    if (p->y < 0x800) p->y = 0x800;
+    if (p->y > 98304L - 0x800) p->y = 98304L - 0x800;
 }
 
 void draw_player(Car *p, int16_t screen_x, int16_t screen_y) {

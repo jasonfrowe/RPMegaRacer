@@ -198,7 +198,7 @@ int main(void)
         update_ai();
 
         // Check collisions
-        check_collisions(&car);
+        // check_collisions(&car);
 
         // Camera system with deadzone - only scroll when car gets near edges
         int16_t car_px_x = car.x >> 8;
