@@ -155,22 +155,9 @@ uint8_t is_colliding_fast(int16_t px, int16_t py) {
 
 uint8_t rescue_cooldown = 0;
 
-// The "Grease" - how many subpixels to shove the car out per frame
-// 0x40 is 1.0 pixel in 10.6 math. 
-#define SHOVE_STRENGTH 0x40 
-
-// Helper: Checks a single rotated point relative to car center
-// local_x/y is relative to car center (8,8)
-static uint8_t check_corner(Car *p, int8_t local_x, int8_t local_y, int8_t s, int8_t c) {
-    int16_t world_x = (p->x >> 6) + 8;
-    int16_t world_y = (p->y >> 6) + 8;
-    
-    // Rotate local point: x' = x*cos - y*sin, y' = x*sin + y*cos
-    int16_t rx = (local_x * c - local_y * s) >> 7;
-    int16_t ry = (local_x * s + local_y * c) >> 7;
-    
-    return (get_terrain_at(world_x + rx, world_y + ry) == TERRAIN_WALL);
-}
+#define BOUNCE_IMPULSE 0x0C0  // Increased slightly for more "pop"
+#define PUSH_OUT_10_6  0x060  
+#define REBOUND_STUN   4 
 
 void update_player(Car *p) {
 
@@ -187,15 +174,23 @@ void update_player(Car *p) {
     }
     if (rescue_cooldown > 0) rescue_cooldown--;
 
-
-    // 1. ROTATION (Apply first, even if near a wall)
+    // --- 1. HANDLE ROTATION ---
     if (is_action_pressed(0, ACTION_ROTATE_LEFT)) p->angle += TURN_SPEED;
     if (is_action_pressed(0, ACTION_ROTATE_RIGHT)) p->angle -= TURN_SPEED;
 
     int8_t s = SIN_LUT[p->angle];
     int8_t c = SIN_LUT[(p->angle + 64) & 0xFF];
 
-    // 2. THRUST & FRICTION (Standard)
+    // --- 2. THE ROTATION EJECTOR (No Stun) ---
+    // If rotating pushed a corner into a wall, shove out immediately.
+    // This prevents "getting stuck" while turning near a wall.
+    if (is_colliding_fast(p->x >> 6, p->y >> 6)) {
+        // Shove backward relative to current heading
+        p->x += (int16_t)s >> 5; 
+        p->y += (int16_t)c >> 5;
+    }
+
+    // --- 3. THRUST & FRICTION ---
     if (rebound_timer > 0) {
         rebound_timer--;
     } else {
@@ -203,71 +198,58 @@ void update_player(Car *p) {
             p->vel_x -= (int16_t)s >> THRUST_SCALER;
             p->vel_y -= (int16_t)c >> THRUST_SCALER;
         }
-         if (is_action_pressed(0, ACTION_SUPER_FIRE)) {
+        if (is_action_pressed(0, ACTION_SUPER_FIRE)) {
             p->vel_x += (int16_t)s >> (THRUST_SCALER + 1);
             p->vel_y += (int16_t)c >> (THRUST_SCALER + 1);
         }
     }
-    
+
     int16_t dvx = (p->vel_x >> FRICTION_SHIFT);
     int16_t dvy = (p->vel_y >> FRICTION_SHIFT);
     if (dvx == 0 && p->vel_x != 0) dvx = (p->vel_x > 0) ? 1 : -1;
     if (dvy == 0 && p->vel_y != 0) dvy = (p->vel_y > 0) ? 1 : -1;
     p->vel_x -= dvx; p->vel_y -= dvy;
 
-    // 3. APPLY VELOCITY (Move first, ask questions later)
-    p->x += (p->vel_x >> 2);
-    p->y += (p->vel_y >> 2);
+    // --- 4. INDEPENDENT AXIS BOUNCE (The "Fun" Logic) ---
+    int16_t cur_px_x = p->x >> 6;
+    int16_t cur_px_y = p->y >> 6;
 
-    // 4. THE PARALLEL EJECTOR
-    // We check the 4 corners of the 6x12 rectangle
-    // If a corner is hitting, we calculate a "Shove Vector"
-    
-    int16_t shove_x = 0;
-    int16_t shove_y = 0;
-
-    // Local coordinates for corners
-    // Front Left (-3,-6), Front Right (3,-6), Rear Left (-3,6), Rear Right (3,6)
-
-    // Check Front-Right
-    if (check_corner(p, 3, -6, s, c)) {
-        shove_x -= c; shove_y -= s; // Push toward car's Left
-        shove_x += s; shove_y += c; // Push toward car's Back
-        p->vel_x = 0; p->vel_y = 0; // Stop forward momentum
-    }
-    // Check Front-Left
-    if (check_corner(p, -3, -6, s, c)) {
-        shove_x += c; shove_y += s; // Push toward car's Right
-        shove_x += s; shove_y += c; // Push toward car's Back
-        p->vel_x = 0; p->vel_y = 0;
-    }
-    // Check Rear-Right
-    if (check_corner(p, 3, 6, s, c)) {
-        shove_x -= c; shove_y -= s; // Push toward car's Left
-        shove_x -= s; shove_y -= c; // Push toward car's Front
-    }
-    // Check Rear-Left
-    if (check_corner(p, -3, 6, s, c)) {
-        shove_x += c; shove_y += s; // Push toward car's Right
-        shove_x -= s; shove_y -= c; // Push toward car's Front
+    // TRY X MOVEMENT
+    if (p->vel_x != 0) {
+        uint16_t next_x = p->x + (p->vel_x >> 2);
+        if (is_colliding_fast(next_x >> 6, cur_px_y)) {
+            // BOUNCE X
+            p->vel_x = (p->vel_x > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
+            p->x += (p->vel_x > 0 ? PUSH_OUT_10_6 : -PUSH_OUT_10_6);
+            rebound_timer = REBOUND_STUN;
+            // Note: We don't update cur_px_x so Y-check is clean
+        } else {
+            p->x = next_x;
+            cur_px_x = p->x >> 6;
+        }
     }
 
-    // Apply the combined shove
-    // This moves the car just enough to clear the wall on this frame
-    if (shove_x != 0 || shove_y != 0) {
-        // Normalize shove to 1 pixel strength
-        p->x += (shove_x > 0 ? SHOVE_STRENGTH : -SHOVE_STRENGTH);
-        p->y += (shove_y > 0 ? SHOVE_STRENGTH : -SHOVE_STRENGTH);
+    // TRY Y MOVEMENT
+    if (p->vel_y != 0) {
+        uint16_t next_y = p->y + (p->vel_y >> 2);
+        if (is_colliding_fast(cur_px_x, next_y >> 6)) {
+            // BOUNCE Y
+            p->vel_y = (p->vel_y > 0) ? -BOUNCE_IMPULSE : BOUNCE_IMPULSE;
+            p->y += (p->vel_y > 0 ? PUSH_OUT_10_6 : -PUSH_OUT_10_6);
+            rebound_timer = REBOUND_STUN;
+        } else {
+            p->y = next_y;
+        }
     }
 
-    // 5. GRASS & AUDIO
+    // --- 5. GRASS & AUDIO ---
     if (get_terrain_at((p->x >> 6) + 8, (p->y >> 6) + 8) == TERRAIN_GRASS) {
         p->vel_x -= (p->vel_x >> 3);
         p->vel_y -= (p->vel_y >> 3);
     }
     update_engine_sound((uint16_t)(abs(p->vel_x) + abs(p->vel_y)));
 
-    // 6. CLAMPING
+    // Clamping
     if (p->x < 0x200) p->x = 0x200;
     if (p->x > 32768 - 0x200) p->x = 32768 - 0x200;
     if (p->y < 0x200) p->y = 0x200;
