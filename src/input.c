@@ -29,6 +29,7 @@ bool is_any_input_pressed(void) {
     if (is_action_pressed(0, ACTION_FIRE)) return true;
     if (is_action_pressed(0, ACTION_SUPER_FIRE)) return true;
     if (is_action_pressed(0, ACTION_PAUSE)) return true;
+    if (is_action_pressed(0, ACTION_RESCUE)) return true;
     return false;
 }
 
@@ -65,7 +66,7 @@ void reset_button_mappings(uint8_t player_id)
     button_mappings[player_id][ACTION_FIRE].gamepad_mask = GP_BTN_A;
     
     // ACTION_SUPER_FIRE: C key or B button (for sbullets)
-    button_mappings[player_id][ACTION_SUPER_FIRE].keyboard_key = KEY_C;
+    button_mappings[player_id][ACTION_SUPER_FIRE].keyboard_key = KEY_X;
     button_mappings[player_id][ACTION_SUPER_FIRE].gamepad_button = GP_FIELD_BTN0; // btn0 field
     button_mappings[player_id][ACTION_SUPER_FIRE].gamepad_mask = GP_BTN_X;
     
@@ -73,6 +74,11 @@ void reset_button_mappings(uint8_t player_id)
     button_mappings[player_id][ACTION_PAUSE].keyboard_key = KEY_ENTER;
     button_mappings[player_id][ACTION_PAUSE].gamepad_button = GP_FIELD_BTN1; // btn1 field
     button_mappings[player_id][ACTION_PAUSE].gamepad_mask = GP_BTN_START;
+
+    // ACTION_RESCUE: B button
+    button_mappings[player_id][ACTION_RESCUE].keyboard_key = KEY_C;
+    button_mappings[player_id][ACTION_RESCUE].gamepad_button = GP_FIELD_BTN0; // btn0 field
+    button_mappings[player_id][ACTION_RESCUE].gamepad_mask = GP_BTN_Y;
 }
 
 /**

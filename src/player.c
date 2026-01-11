@@ -158,6 +158,8 @@ uint8_t is_colliding_fast(int16_t px, int16_t py) {
     return 0;
 }
 
+uint8_t rescue_cooldown = 0;
+
 void update_player(Car *p) {
     // 1. SAVE SAFE POSITION
     // This is our "Undo" buffer if we hit a wall or get rammed
@@ -172,7 +174,12 @@ void update_player(Car *p) {
     }
 
     // 2. HANDLE ROTATION & INPUT
-    if (is_action_pressed(0, ACTION_PAUSE)) { rescue_player(p); return; }
+    if (is_action_pressed(0, ACTION_RESCUE) && rescue_cooldown == 0) {
+        rescue_player(p);
+        rescue_cooldown = 120; // Prevent reuse for 2 seconds
+    }
+    if (rescue_cooldown > 0) rescue_cooldown--;
+
     if (is_action_pressed(0, ACTION_ROTATE_LEFT)) p->angle += TURN_SPEED;
     if (is_action_pressed(0, ACTION_ROTATE_RIGHT)) p->angle -= TURN_SPEED;
 
