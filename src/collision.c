@@ -1,3 +1,4 @@
+#include <rp6502.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include "player.h"
@@ -54,5 +55,46 @@ void resolve_car_collision(Car *c1, Car *c2) {
         // Assuming you add rebound_timer to the AICar struct as well:
         extern uint8_t rebound_timer; 
         rebound_timer = 10; // Stun the player
+    }
+}
+
+// 1.0 pixel in 10.6 fixed point
+#define AI_PUSH_FORCE 0x040 
+
+void resolve_ai_ai_collision(AICar *a1, AICar *a2) {
+    // 1. Quick Manhattan Distance check
+    // 10.6 world coordinates >> 6 for pixels
+    int16_t dx = (int16_t)(a2->car.x >> 6) - (int16_t)(a1->car.x >> 6);
+    int16_t dy = (int16_t)(a2->car.y >> 6) - (int16_t)(a1->car.y >> 6);
+    
+    // Check for 8x8 pixel overlap (half of a car)
+    // Using abs() on 16-bit is very fast on 6502
+    if (abs(dx) < 8 && abs(dy) < 8) {
+        
+        // 2. SIMPLE NUDGE (No wall lookups!)
+        // If they are on top of each other, force a direction
+        if (dx == 0 && dy == 0) dx = 1; 
+
+        // Physically separate them
+        if (dx > 0) { a1->car.x -= AI_PUSH_FORCE; a2->car.x += AI_PUSH_FORCE; }
+        else       { a1->car.x += AI_PUSH_FORCE; a2->car.x -= AI_PUSH_FORCE; }
+
+        if (dy > 0) { a1->car.y -= AI_PUSH_FORCE; a2->car.y += AI_PUSH_FORCE; }
+        else       { a1->car.y += AI_PUSH_FORCE; a2->car.y -= AI_PUSH_FORCE; }
+
+        // 3. MOMENTUM SWAP (Fastest way)
+        int16_t tvx = a1->car.vel_x;
+        a1->car.vel_x = a2->car.vel_x;
+        a2->car.vel_x = tvx;
+
+        int16_t tvy = a1->car.vel_y;
+        a1->car.vel_y = a2->car.vel_y;
+        a2->car.vel_y = tvy;
+
+        // 4. JITTER
+        // Instead of rand(), use the VSync LSB to tweak angles
+        // This stops them from locking together in a perfectly straight line
+        a1->car.angle += (RIA.vsync & 0x03);
+        a2->car.angle -= (RIA.vsync & 0x03);
     }
 }

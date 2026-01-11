@@ -1,3 +1,94 @@
+### **Phase 1: Control & State Foundations**
+*   [ ] **Input Remapping:**
+    *   Map `GP_BTN_B` (and a keyboard key like 'R') to `ACTION_RESCUE`.
+    *   Map `GP_BTN_START` to a new `ACTION_PAUSE`.
+*   [ ] **Game State Machine:** Implement a `current_state` variable in `main.c`:
+    *   `STATE_TITLE`: Waiting for Start.
+    *   `STATE_COUNTDOWN`: The 3-2-1 sequence.
+    *   `STATE_RACING`: Active physics and AI.
+    *   [ ] **Pause State:** If `ACTION_PAUSE` is hit, stop all physics updates but keep OPL2 music running (perhaps at lower volume).
+    *   `STATE_FINISHED`: Player crosses Lap 5.
+    *   `STATE_GAMEOVER`: Showing results/leaderboard.
+*   [ ] **Race Manager:**
+    *   Track `player_lap_count` and `ai_lap_counts[3]`.
+    *   Trigger `STATE_FINISHED` when any car hits Lap 5.
+
+### **Phase 2: HUD & UI Expansion**
+*   [ ] **The Race Timer:**
+    *   Create a `uint32_t race_frames` counter that starts at `STATE_RACING`.
+    *   Display as `MM:SS:CC` (Minutes:Seconds:Centiseconds) in the HUD.
+*   [ ] **Title Screen:**
+    *   Use Mode 1 (Text) or a static Tile map on Plane 1 to show a "MEGA RACER" logo.
+    *   Add "Press Start to Race."
+*   [ ] **Ranking Logic:**
+    *   Every second, calculate who is 1st through 4th based on (Laps * WaypointID).
+    *   Display "POS: 1/4" in the HUD.
+
+### **Phase 3: Gameplay "Juice" & Mechanics**
+*   [ ] **AI Rubber Banding:** 
+    *   If Player is 1st: Decrease `AI_THRUST_SHIFT` (AI gets faster/aggressive).
+    *   If Player is 4th: Increase `AI_THRUST_SHIFT` (AI slows down to let player catch up).
+*   [ ] **High Impact Explosions:**
+    *   If `abs(velocity)` is near max and `terrain == TERRAIN_WALL`:
+    *   Trigger `play_psg_explosion()`.
+    *   Swap car sprite to an "explosion" frame (or flicker it).
+    *   Force a `rescue_player()` after a 1-second delay.
+*   [ ] **Rescue Helicopter:**
+    *   When `rescue_player` is triggered, don't just teleport.
+    *   Spawn a Helicopter sprite at the car's current position, "lift" it, and move it to the waypoint before disappearing.
+*   [ ] **Pickups & Hazards (Sprites):**
+    *   [ ] **Wrenches:** Collect to spend in the shop (Phase 6).
+    *   [ ] **Oil Spills:** If car touches, force `p->angle += 32` (random spin) and kill traction for 30 frames.
+
+### **Phase 4: Content & Environment**
+*   [ ] **Scenery Layer (Plane 1):**
+    *   Initialize a second Tile Plane.
+    *   Use it for "Overhanging" graphics: Bridges, tree tops, or stadium lights that the car drives *under*.
+*   [ ] **Closing Gates:**
+    *   Use an Affine Sprite (large scale) or an animated tile.
+    *   Open/Close based on the `race_frames` timer.
+*   [ ] **Additional Maps:**
+    *   Create `track2.bin`, `track3.bin`.
+    *   Implement a loader that clears XRAM and loads new assets between races.
+
+### **Phase 5: Meta & Persistence**
+*   [ ] **High Score System:**
+    *   Create a `scores.dat` file.
+    *   Store the fastest total race time and the fastest single lap time.
+*   [ ] **The "Super Sprint" Shop:**
+    *   A screen between tracks.
+    *   Spend collected wrenches on: `Higher Top Speed`, `Faster Acceleration`, `Super Traction`.
+
+---
+
+### **Missing "Essentials" to add to your list:**
+
+1.  **Race Results Screen:** Don't just reset! Show a table: "1st: Player (Time), 2nd: AI 1..."
+2.  **Soundscape Variety:** 
+    *   A different OPL2 track for the Title Screen vs. the Race.
+    *   A "Final Lap" music tempo increase (if OPL2 driver supports it).
+3.  **Visual Polish - "Tire Smoke":**
+    *   When drifting or accelerating from 0, spawn tiny "Cloud" sprites behind the rear tires. 
+    *   Since you have spare sprites, this adds a huge amount of "feel."
+4.  **AI Personalities:**
+    *   Give the 3 AI cars different `AI_TURN_SPEED` or `AI_MAX_ACCEL` values so they don't stay in a perfect line.
+
+---
+
+### **Immediate Recommendation: The "Pause" and "Rescue" Buttons**
+Since you are about to edit `input.c`, add a **Cooldown** to the Rescue button. If the player mashes it, they could glitch the lap counter.
+
+**Logic for `player.c`:**
+```c
+if (is_action_pressed(0, ACTION_RESCUE) && rescue_cooldown == 0) {
+    rescue_player(p);
+    rescue_cooldown = 120; // Prevent reuse for 2 seconds
+}
+if (rescue_cooldown > 0) rescue_cooldown--;
+```
+
+
+
 ### Phase 1: Environment & Boilerplate
 - [x] **Project Setup:** Configure `CMakeLists.txt` for `mos-rp6502-clang`.
 - [x] **RIA Integration:** Set up the standard library hooks for the RP6502 (XRAM access, register mapping).

@@ -206,14 +206,18 @@ void process_audio_frame(void) {
 }
 
 void resolve_all_collisions(void) {
-    // Player vs AI
+    // A. FULL PHYSICS: Player vs all 3 AI
+    // Keep your heavy resolve_car_collision function for these
+    // It should include the wall-checks and sound effects
     for (int i = 0; i < NUM_AI_CARS; i++) {
-        resolve_car_collision(&car, &ai_cars[i].car);
+        resolve_car_collision(&car, &ai_cars[i].car); 
     }
-    // AI vs AI
-    resolve_car_collision(&ai_cars[0].car, &ai_cars[1].car);
-    resolve_car_collision(&ai_cars[0].car, &ai_cars[2].car);
-    resolve_car_collision(&ai_cars[1].car, &ai_cars[2].car);
+
+    // B. LIGHT REPULSION: AI vs each other
+    // Use the new optimized function that skips wall lookups
+    resolve_ai_ai_collision(&ai_cars[0], &ai_cars[1]);
+    resolve_ai_ai_collision(&ai_cars[1], &ai_cars[2]);
+    resolve_ai_ai_collision(&ai_cars[0], &ai_cars[2]);
 }
 
 void update_camera_and_ui(void) {
