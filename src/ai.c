@@ -71,7 +71,10 @@ void init_ai(void) {
         ai_cars[i].sprite_index = i + 1;  
         ai_cars[i].last_recorded_x = 245;  
         ai_cars[i].last_recorded_y = start_positions[i];
+        ai_cars[i].base_speed_shift = AI_SPEED_NORMAL;
+        ai_cars[i].last_thrust_shift = AI_SPEED_NORMAL;
     }
+    car.total_progress = 0;
 }
 
 static uint8_t ai_brain_turn = 0; // Rotates 0, 1, 2
@@ -154,8 +157,24 @@ void update_ai(void) {
             }
             
             ai->target_angle = (192 - atan2_8(dy, dx)) & 0xFF;
+            // uint8_t angle_diff = abs((int8_t)(ai->target_angle - ai->car.angle));
+            // ai->last_thrust_shift = (angle_diff > 32) ? AI_REDUCED_THRUST_SHIFT : AI_MAX_THRUST_SHIFT;
+            // DYNAMIC SPEED CONTROL
+            // Start with the speed set by rubberbanding
             uint8_t angle_diff = abs((int8_t)(ai->target_angle - ai->car.angle));
-            ai->last_thrust_shift = (angle_diff > 32) ? AI_REDUCED_THRUST_SHIFT : AI_MAX_THRUST_SHIFT;
+
+            if (angle_diff > 32) {
+                // Sharp turn: Slow down by ONE tier
+                ai->last_thrust_shift = ai->base_speed_shift + 1;
+            } else {
+                ai->last_thrust_shift = ai->base_speed_shift;
+            }
+
+            // Safety cap: Never go slower than Shift 5
+            if (ai->last_thrust_shift > AI_SPEED_SLOW) {
+                ai->last_thrust_shift = AI_SPEED_SLOW;
+            }
+
         }
 
         // --- 3. PHYSICS (Every Frame) ---
@@ -181,7 +200,8 @@ void update_ai(void) {
         int16_t dvy = (ai->car.vel_y >> FRICTION_SHIFT);
         if (dvx == 0 && ai->car.vel_x != 0) dvx = (ai->car.vel_x > 0) ? 1 : -1;
         if (dvy == 0 && ai->car.vel_y != 0) dvy = (ai->car.vel_y > 0) ? 1 : -1;
-        ai->car.vel_x -= dvx; ai->car.vel_y -= dvy;
+        ai->car.vel_x -= dvx; 
+        ai->car.vel_y -= dvy;
 
         // --- 4. MOVEMENT & WALL COLLISION ---
         int16_t px = (int16_t)(ai->car.x >> 6);
@@ -245,5 +265,25 @@ void draw_ai_cars(int16_t scroll_x, int16_t scroll_y) {
         RIA.rw0 = ty & 0xFF;   RIA.rw0 = ty >> 8;    // TY
         RIA.rw0 = sx & 0xFF;   RIA.rw0 = sx >> 8;    
         RIA.rw0 = sy & 0xFF;   RIA.rw0 = sy >> 8;    
+    }
+}
+
+
+void update_ai_rubberbanding(AICar *ai) {
+    uint16_t ai_progress = (ai->car.laps * NUM_WAYPOINTS) + ai->current_waypoint;
+    int16_t diff = (int16_t)car.total_progress - (int16_t)ai_progress;
+
+    // diff > 0: Player is ahead
+    // diff < 0: AI is ahead
+
+    if (diff > 3) {
+        // Player is 3+ waypoints ahead: AI catches up
+        ai->base_speed_shift = AI_SPEED_FAST; 
+    } else if (diff < -3) {
+        // AI is 3+ waypoints ahead: AI slows down
+        ai->base_speed_shift = AI_SPEED_SLOW;
+    } else {
+        // It's a close race: Standard speed
+        ai->base_speed_shift = AI_SPEED_NORMAL;
     }
 }

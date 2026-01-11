@@ -279,7 +279,17 @@ int main(void) {
                 uint16_t player_frame_start_y = car.y;
 
                 update_player(&car);
+                update_player_progress(); // Updates car.total_progress
+
                 update_ai();
+
+                // Once every 16 frames, recalculate speed for all AI
+                if ((RIA.vsync & 15) == 0) {
+                    for (int i=0; i < NUM_AI_CARS; i++) {
+                        update_ai_rubberbanding(&ai_cars[i]);
+                    }
+                }
+
                 resolve_all_collisions();
 
                 // Failsafe: check if ramming pushed player into a wall

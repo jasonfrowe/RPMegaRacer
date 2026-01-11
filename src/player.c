@@ -134,7 +134,7 @@ void init_player(void) {
 
 // Tuning constants
 #define BOUNCE_IMPULSE 0x080  // 8.8 value
-#define PUSH_OUT_10_6  0x040  // ~0.5 pixels in 10.6 math (0.5 * 64)
+#define PUSH_OUT_10_6  0x060  // ~0.5 pixels in 10.6 math (0.5 * 64)
 #define REBOUND_STUN   4
 
 // OPTIMIZED: Checks 4 corners using 16-bit pixel coordinates
@@ -309,12 +309,33 @@ void update_lap_logic(Car *p, bool is_player) {
                 p->laps++;
                 p->next_checkpoint = 1; // Loop back to CP1
                 
-                if (is_player) {
-                    // Visual feedback: Print to Console Plane (free VSync-wise)
-                    printf("\x1b[1;2H LAP: %d/3 ", p->laps + 1);
-                    // play_psg_lap_ding();
-                }
+                // if (is_player) {
+                //     // Visual feedback: Print to Console Plane (free VSync-wise)
+                //     printf("\x1b[1;2H LAP: %d/3 ", p->laps + 1);
+                //     // play_psg_lap_ding();
+                // }
             }
             break;
     }
+}
+
+void update_player_progress(void) {
+    if ((RIA.vsync & 31) != 0) return; // Only run twice a second
+
+    uint8_t best_wp = 0;
+    uint16_t min_dist = 0xFFFF;
+    int16_t px = car.x >> 6;
+    int16_t py = car.y >> 6;
+
+    // Find nearest waypoint to player
+    for (uint8_t i = 0; i < NUM_WAYPOINTS; i++) {
+        int16_t dx = abs(px - waypoints[i].x);
+        int16_t dy = abs(py - waypoints[i].y);
+        uint16_t dist = dx + dy; // Manhattan is fine here
+        if (dist < min_dist) {
+            min_dist = dist;
+            best_wp = i;
+        }
+    }
+    car.total_progress = (car.laps * NUM_WAYPOINTS) + best_wp;
 }

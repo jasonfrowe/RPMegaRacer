@@ -4,6 +4,11 @@
 #include <stdint.h>
 #include "player.h"
 
+#define AI_SPEED_VERY_FAST 1  // Super Catch-up mode
+#define AI_SPEED_FAST      2  // Aggressive
+#define AI_SPEED_NORMAL    3  // Standard
+#define AI_SPEED_SLOW      4  // Letting player catch up
+
 #define NUM_AI_CARS 3
 #define NUM_WAYPOINTS 12
 #define WAYPOINT_REACH_RADIUS 40
@@ -29,6 +34,7 @@ typedef struct {
     int16_t last_recorded_y;
     uint8_t rebound_timer;
     uint8_t target_angle;      // Stored decision
+    uint8_t base_speed_shift;   // Stored decision
     uint8_t last_thrust_shift; // Stored decision
 } AICar;
 
@@ -41,5 +47,6 @@ void init_ai(void);
 void update_ai(void);
 void draw_ai_cars(int16_t scroll_x, int16_t scroll_y);
 extern uint8_t atan2_8(int16_t dy, int16_t dx);
+extern void update_ai_rubberbanding(AICar *ai);
 
 #endif // AI_H
