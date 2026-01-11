@@ -31,7 +31,7 @@ Since you are using LLVM-MOS, you can use `structs` to manage car state, which w
     - Wall: Bounce or stop (and trigger an OPL2 "crunch" sound).
 - [x] **Waypoint System:** Create an array of `(x, y)` waypoints for AI drones.
 - [x] **AI Steering:** Write a function that makes AI cars steer toward the next waypoint once they are within a certain radius of the current one.
-- [ ] **Lap Logic:** Place "Checklines" (invisible sectors) to ensure players drive the whole track before a lap is counted.
+- [x] **Lap Logic:** Place "Checklines" (invisible sectors) to ensure players drive the whole track before a lap is counted.
 
 ### Phase 5: OPL2 Audio Implementation
 This is the heart of your "Mega" version.
@@ -51,9 +51,9 @@ This is the heart of your "Mega" version.
     - [ ] **Turbo:** Increases acceleration.
     - [ ] **Top Speed:** Increases the max velocity cap.
 - [ ] **HUD:** Use the RIA's "overlay" or a dedicated tile layer to display:
-    - Lap count (e.g., "LAP 1/3")
-    - Rank (1st, 2nd, etc.)
-    - Collected Wrenches/Points.
+    - [x] Lap count (e.g., "LAP 1/3")
+    - [ ] Rank (1st, 2nd, etc.)
+    - [ ] Collected Wrenches/Points.
 
 ### Phase 7: Optimization & Polish
 - [x] **Affine Sprite Benchmarking:** If using the RIA's hardware rotation, test how many 16x16 affine sprites you can draw before the scanline limit is hit. 
