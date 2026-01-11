@@ -1,5 +1,5 @@
 ### **Phase 1: Control & State Foundations**
-*   [ ] **Input Remapping:**
+*   [x] **Input Remapping:**
     *   Map `GP_BTN_B` (and a keyboard key like 'R') to `ACTION_RESCUE`.
     *   Map `GP_BTN_START` to a new `ACTION_PAUSE`.
 *   [ ] **Game State Machine:** Implement a `current_state` variable in `main.c`:

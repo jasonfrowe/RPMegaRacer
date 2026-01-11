@@ -245,86 +245,85 @@ void update_camera_and_ui(void) {
 int main(void) {
     puts("MegaRacer Engine Starting...");
     init_all_systems();
+    reset_race();
 
     while (1) {
         // 1. SYNC
         if (RIA.vsync == vsync_last) continue;
         vsync_last = RIA.vsync;
 
-        // // Palette for the tile (16 colors)
-        // uint16_t tile_palette[16] = {
-        //     0x0020,  // Index 0 (Transparent)
-        //     0x0020,
-        //     0x41A7,
-        //     0x1AE0,
-        //     0x72AA,
-        //     0x0038,
-        //     0x003E,
-        //     0x0372,
-        //     0x2C60,
-        //     0x35AE,
-        //     0x053C,
-        //     0x073E,
-        //     0x93AE,
-        //     0xC4B4,
-        //     0xD534,
-        //     0xF7BE,
-        // };
-
-        // RIA.addr0 = PALETTE_ADDR + 2;
-        // RIA.step0 = 1;
-        // RIA.rw0 = tile_palette[2] & 0xFF;
-        // RIA.rw0 = tile_palette[2] >> 8;
-
-        // 2. HARDWARE UPDATE (Do this immediately after VSync!)
-        // This sets the scroll for the frame being drawn RIGHT NOW
+        // 2. HARDWARE UPDATE (Immediate)
         xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, x_pos_px, next_scroll_x);
         xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, y_pos_px, next_scroll_y);
 
         // 3. AUDIO
         process_audio_frame();
 
-        uint16_t player_frame_start_x = car.x;
-        uint16_t player_frame_start_y = car.y;
-
         // 4. PHYSICS & LOGIC
         handle_input();
-        update_player(&car);
-        update_ai();
-        resolve_all_collisions();
 
-        // If the ramming phase pushed the player into a wall, 
-        // undo the ram and the movement entirely.
-        if (is_colliding_fast(car.x >> 6, car.y >> 6)) {
-            car.x = player_frame_start_x;
-            car.y = player_frame_start_y;
-            car.vel_x = 0;
-            car.vel_y = 0;
-        }
+        switch (current_state) {
+            case STATE_TITLE:
+                update_title_screen();
+                break;
 
-        // Process lap logic
-        update_lap_logic(&car, true);
-        for (int i = 0; i < NUM_AI_CARS; i++) {
-            update_lap_logic(&ai_cars[i].car, false);
-        }
-        
+            case STATE_COUNTDOWN:
+                update_race_logic(); // This handles the state_timer--
+                update_player(&car);
+                update_ai();
+                break;
+
+            case STATE_RACING: {
+                // Braces {} here fix the "label followed by declaration" warning
+                uint16_t player_frame_start_x = car.x;
+                uint16_t player_frame_start_y = car.y;
+
+                update_player(&car);
+                update_ai();
+                resolve_all_collisions();
+
+                // Failsafe: check if ramming pushed player into a wall
+                if (is_colliding_fast(car.x >> 6, car.y >> 6)) {
+                    car.x = player_frame_start_x;
+                    car.y = player_frame_start_y;
+                    car.vel_x = 0;
+                    car.vel_y = 0;
+                }
+
+                // Process lap logic
+                update_lap_logic(&car, true);
+                for (int i = 0; i < NUM_AI_CARS; i++) {
+                    update_lap_logic(&ai_cars[i].car, false);
+                }
+
+                // Check for Race End (5 Laps)
+                if (car.laps >= 5) {
+                    current_state = STATE_FINISHED;
+                    state_timer = 300; // 5 seconds of "Race Finished" display
+                }
+            } break;
+
+            case STATE_FINISHED:
+                update_finished_screen();
+                break;
+
+            case STATE_GAMEOVER:
+                // Handle high scores or waiting for reset
+                if (is_action_pressed(0, ACTION_PAUSE)) {
+                    reset_race();
+                }
+                break;
+        } 
+
         // 5. POST-PROCESS (Camera & UI)
         update_camera_and_ui();
 
         // 6. RENDER PREP
-        // Calculate where the cars should be on screen based on the camera we just calculated
         int16_t screen_x = (car.x >> 6) + next_scroll_x;
         int16_t screen_y = (car.y >> 6) + next_scroll_y;
         
         draw_player(&car, screen_x, screen_y);
-        draw_ai_cars(next_scroll_x, next_scroll_y); // Passing next_scroll_x/y inside this function is a good idea too
-
-        // RIA.addr0 = PALETTE_ADDR + 2;
-        // RIA.step0 = 1;
-        // RIA.rw0 = tile_palette[6] & 0xFF;
-        // RIA.rw0 = tile_palette[6] >> 8;
-
-
+        draw_ai_cars(next_scroll_x, next_scroll_y);
     }
     return 0;
 }

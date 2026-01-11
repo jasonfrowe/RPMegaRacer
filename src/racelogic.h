@@ -4,14 +4,17 @@
 #define COUNTDOWN_TOTAL_TIME 480 // 4 seconds at 120 FPS
 
 typedef enum {
+    STATE_TITLE,
     STATE_COUNTDOWN,
     STATE_RACING,
-    STATE_FINISHED
-} RaceState;
+    STATE_FINISHED,
+    STATE_GAMEOVER
+} GameState;
 
 extern void update_race_logic(void);
+extern void reset_race(void);
 
-extern RaceState current_state;
+extern GameState current_state;
 extern uint16_t state_timer;
 extern bool countdown_active;
 

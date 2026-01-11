@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "hud.h"
+#include "input.h"
+#include "racelogic.h"
+#include "player.h"
 
 char message[MESSAGE_LENGTH + 1]; // +1 for null terminator
 
@@ -58,7 +61,46 @@ void update_countdown_display(uint16_t delay) {
         hud_print(16, 15, "    1     ", 15, HUD_COL_BG); // White 1
     } else if (delay > 240) {
         hud_print(16, 15, "   GO!!   ", 10, HUD_COL_BG); // Green GO
-    } else if (delay == 240) {
+    } else if (delay <= 240) {
         hud_print(16, 15, "          ", 0, 0);         // Clear row 15
+    }
+}
+
+void update_title_screen(void) {
+    // Flash "PRESS FIRE" using vsync bits
+    if (RIA.vsync & 0x20) {
+        hud_print(12, 12, " PRESS FIRE TO START ", 15, 0);
+    } else {
+        hud_print(12, 12, "                     ", 0, 0);
+    }
+    
+    hud_print(10, 5, " *** MEGA RACER RP6502 *** ", 11, 0);
+
+    if (is_action_pressed(0, ACTION_FIRE)) {
+        // Clear title text
+        hud_print(12, 12, "                     ", 0, 0);
+        hud_print(10, 5,  "                           ", 0, 0);
+        current_state = STATE_COUNTDOWN;
+        state_timer = COUNTDOWN_TOTAL_TIME; 
+    }
+}
+
+void update_finished_screen(void) {
+    hud_print(15, 10, " RACE FINISHED ", 10, 0);
+    
+    // Determine placement (Simplified for now)
+    if (car.laps >= 5) {
+        hud_print(16, 12, " YOU WON! ", 14, 0);
+    } else {
+        hud_print(16, 12, " YOU LOST ", 12, 0);
+    }
+
+    if (state_timer > 0) {
+        state_timer--;
+    } else {
+        hud_print(10, 15, " PRESS START TO RESET ", 15, 0);
+        if (is_action_pressed(0, ACTION_PAUSE)) { // START button
+            reset_race();
+        }
     }
 }

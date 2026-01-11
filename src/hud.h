@@ -27,5 +27,7 @@ extern char message[MESSAGE_LENGTH + 1]; // +1 for null terminator
 extern void hud_print(uint8_t x, uint8_t y, const char* str, uint8_t fg, uint8_t bg);
 extern void hud_refresh_stats(uint8_t lap, uint16_t speed);
 extern void update_countdown_display(uint16_t delay);
+extern void update_title_screen(void);
+extern void update_finished_screen(void);
 
 #endif // HUD_H
