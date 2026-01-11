@@ -339,22 +339,29 @@ void update_lap_logic(Car *p, bool is_player) {
 }
 
 void update_player_progress(void) {
-    if ((RIA.vsync & 31) != 0) return; // Only run twice a second
+    // 1. Convert position to pixels
+    int16_t px = (car.x >> 6) + 8;
+    int16_t py = (car.y >> 6) + 8;
 
-    uint8_t best_wp = 0;
-    uint16_t min_dist = 0xFFFF;
-    int16_t px = car.x >> 6;
-    int16_t py = car.y >> 6;
-
-    // Find nearest waypoint to player
-    for (uint8_t i = 0; i < NUM_WAYPOINTS; i++) {
-        int16_t dx = abs(px - waypoints[i].x);
-        int16_t dy = abs(py - waypoints[i].y);
-        uint16_t dist = dx + dy; // Manhattan is fine here
-        if (dist < min_dist) {
-            min_dist = dist;
-            best_wp = i;
-        }
+    // 2. Target current waypoint
+    int16_t dx = abs(waypoints[car.current_waypoint].x - px);
+    int16_t dy = abs(waypoints[car.current_waypoint].y - py);
+    
+    // 3. LARGER RADIUS FOR HUMAN PLAYER (48 pixels instead of 32)
+    // This prevents the player_progress from "stalling" while the AI passes
+    if (dx < 48 && dy < 48) {
+        car.current_waypoint = (car.current_waypoint + 1) % NUM_WAYPOINTS;
     }
-    car.total_progress = (car.laps * NUM_WAYPOINTS) + best_wp;
+
+    // 4. THE STABILIZER:
+    // If waypoint is 0 but checkpoint logic hasn't ticked the lap yet,
+    // we "cheat" the math to prevent the total_progress from dropping to 0.
+    uint16_t effective_laps = car.laps;
+    if (car.current_waypoint == 0 && car.next_checkpoint != 1) {
+        // We are on the finish line but haven't 'officially' started the next lap
+        // Treat us as if we are still on the previous lap at the final waypoint
+        car.total_progress = (effective_laps * NUM_WAYPOINTS) + NUM_WAYPOINTS;
+    } else {
+        car.total_progress = (effective_laps * NUM_WAYPOINTS) + car.current_waypoint;
+    }
 }

@@ -7,6 +7,7 @@
 #include "racelogic.h"
 #include "hud.h"
 #include "input.h"
+#include <stdio.h>
 
 #define AI_TURN_SPEED 3
 #define AI_MAX_THRUST_SHIFT 3      
@@ -75,6 +76,7 @@ void init_ai(void) {
         ai_cars[i].last_thrust_shift = AI_SPEED_NORMAL;
     }
     car.total_progress = 0;
+    car.current_waypoint = 1;
 }
 
 static uint8_t ai_brain_turn = 0; // Rotates 0, 1, 2
@@ -270,20 +272,54 @@ void draw_ai_cars(int16_t scroll_x, int16_t scroll_y) {
 
 
 void update_ai_rubberbanding(AICar *ai) {
-    uint16_t ai_progress = (ai->car.laps * NUM_WAYPOINTS) + ai->current_waypoint;
-    int16_t diff = (int16_t)car.total_progress - (int16_t)ai_progress;
+    uint16_t ai_total = (uint16_t)(ai->car.laps * NUM_WAYPOINTS) + ai->current_waypoint;
+    
+    // Use player's target waypoint progress
+    int16_t diff = (int16_t)car.total_progress - (int16_t)ai_total;
+    static int16_t diff_old = 0;
 
-    // diff > 0: Player is ahead
-    // diff < 0: AI is ahead
-
-    if (diff > 3) {
-        // Player is 3+ waypoints ahead: AI catches up
-        ai->base_speed_shift = AI_SPEED_FAST; 
-    } else if (diff < -3) {
-        // AI is 3+ waypoints ahead: AI slows down
+    // If player is > 2 waypoints ahead, speed up AI
+    if (diff > 2) {
+        ai->base_speed_shift = AI_SPEED_FAST;
+    } 
+    // If AI is > 2 waypoints ahead, slow down AI
+    else if (diff < -2) {
         ai->base_speed_shift = AI_SPEED_SLOW;
-    } else {
-        // It's a close race: Standard speed
+    } 
+    // Close race
+    else {
         ai->base_speed_shift = AI_SPEED_NORMAL;
     }
+
+    if (diff != diff_old) {
+        printf("AI Car Rubberbanding: diff=%d, base_speed_shift=%d, player_progress=%d, ai_total=%d\n", diff, ai->base_speed_shift, car.total_progress, ai_total);
+        diff_old = diff;
+    }
+
 }
+
+// void update_ai_rubberbanding(AICar *ai) {
+//     uint16_t ai_progress = (ai->car.laps * NUM_WAYPOINTS) + ai->current_waypoint;
+//     int16_t diff_old = 0;
+//     int16_t diff = (int16_t)car.total_progress - (int16_t)ai_progress;
+
+//     // diff > 0: Player is ahead
+//     // diff < 0: AI is ahead
+
+//     if (diff > 3) {
+//         // Player is 3+ waypoints ahead: AI catches up
+//         ai->base_speed_shift = AI_SPEED_FAST; 
+//     } else if (diff < -3) {
+//         // AI is 3+ waypoints ahead: AI slows down
+//         ai->base_speed_shift = AI_SPEED_SLOW;
+//     } else {
+//         // It's a close race: Standard speed
+//         ai->base_speed_shift = AI_SPEED_NORMAL;
+//     }
+
+//     if (diff != diff_old) {
+//         printf("AI Car Rubberbanding: diff=%d, base_speed_shift=%d, player_progress=%d, ai_progress=%d\n", diff, ai->base_speed_shift, car.total_progress, ai_progress);
+//         diff_old = diff;
+//     }
+
+// }

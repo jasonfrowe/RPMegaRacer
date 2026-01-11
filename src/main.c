@@ -309,6 +309,7 @@ int main(void) {
                 // Check for Race End (5 Laps)
                 if (car.laps >= 5) {
                     current_state = STATE_FINISHED;
+                    update_engine_sound(0); // Stop engine sound
                     state_timer = 300; // 5 seconds of "Race Finished" display
                 }
             } break;

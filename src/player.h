@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 #define FRICTION_SHIFT 5  // Higher = less friction (more "icy")
-#define THRUST_SCALER  2  // Tuning: how fast the car accelerates
+#define THRUST_SCALER  3  // Tuning: how fast the car accelerates
 #define TURN_SPEED     4  // How many angle units to turn per frame
 
 typedef struct {
@@ -16,6 +16,7 @@ typedef struct {
     // --- Lap System ---
     uint8_t laps;            // Count of completed laps
     uint8_t next_checkpoint; // 0=Finish, 1=CP1, 2=CP2, 3=CP3
+    uint8_t current_waypoint;  // For tracking progress
     uint16_t total_progress; // Track progress for AI comparison
 } Car;
 
