@@ -266,10 +266,27 @@ void update_player(Car *p) {
         }
     }
 
-    // --- 5. GRASS & AUDIO ---
-    if (get_terrain_at((p->x >> 6) + 8, (p->y >> 6) + 8) == TERRAIN_GRASS) {
+    // --- 5. TERRAIN & AUDIO ---
+    uint16_t px = (p->x >> 6) + 8;
+    uint16_t py = (p->y >> 6) + 8;
+    uint8_t ttype = get_terrain_at(px, py);
+
+    if (ttype == TERRAIN_GRASS) {
+        // Standard Grass: 12.5% drag
         p->vel_x -= (p->vel_x >> 3);
         p->vel_y -= (p->vel_y >> 3);
+    } 
+    else if (ttype == TERRAIN_WALL) {
+        // "Sticky" Wall: 50% drag
+        p->vel_x -= (p->vel_x >> 1);
+        p->vel_y -= (p->vel_y >> 1);
+        
+        // HARD CAP: Ensure the car can never go faster than a "crawl" inside a wall
+        // 0x40 is 1.0 pixel. Let's cap at 0.5 pixels (0x20)
+        if (p->vel_x > 0x20)  p->vel_x = 0x20;
+        if (p->vel_x < -0x20) p->vel_x = -0x20;
+        if (p->vel_y > 0x20)  p->vel_y = 0x20;
+        if (p->vel_y < -0x20) p->vel_y = -0x20;
     }
     update_engine_sound((uint16_t)(abs(p->vel_x) + abs(p->vel_y)));
 
