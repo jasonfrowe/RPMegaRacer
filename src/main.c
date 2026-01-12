@@ -191,8 +191,9 @@ void init_all_systems(void) {
     // Audio Setup
     OPL_Config(1, OPL_ADDR);
     opl_init();
+    init_opl2_engine_sound(); // Engine sound system
     music_init(MUSIC_FILENAME);
-    init_psg();
+    // init_psg();
 }
 
 void process_audio_frame(void) {
@@ -341,14 +342,14 @@ int main(void) {
                     race_winner = 0; // Player (Red car) won
                     current_state = STATE_FINISHED;
                     state_timer = 300; // 5 seconds
-                    update_engine_sound(0);
+                    stop_engine_sound();
                 } else {
                     for (uint8_t i = 0; i < NUM_AI_CARS; i++) {
                         if (ai_cars[i].car.laps >  5) {
                             race_winner = i + 1; // AI won (1, 2, or 3)
                             current_state = STATE_FINISHED;
                             state_timer = 300;
-                            update_engine_sound(0);
+                            stop_engine_sound();
                             break;
                         }
                     }
