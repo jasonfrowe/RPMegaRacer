@@ -18,6 +18,7 @@ typedef struct {
     uint8_t next_checkpoint; // 0=Finish, 1=CP1, 2=CP2, 3=CP3
     uint8_t current_waypoint;  // For tracking progress
     uint16_t total_progress; // Track progress for AI comparison
+    uint16_t progress_steps;  // INCREMENTS ONLY: 0, 1, 2, 3, 4, 5... 60...
 } Car;
 
 extern uint8_t startX;

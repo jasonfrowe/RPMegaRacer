@@ -242,10 +242,22 @@ void update_camera_and_ui(void) {
 
 }
 
+void debug_draw_waypoints(void) {
+    int16_t wx = (waypoints[car.current_waypoint].x + next_scroll_x) >> 3;
+    int16_t wy = (waypoints[car.current_waypoint].y + next_scroll_y) >> 3;
+    if (wx >= 0 && wx < 40 && wy >= 0 && wy < 30) {
+        hud_print(wx, wy, "X", 10, 0); // Green X at the target
+    }
+}
+
+
+
 int main(void) {
     puts("MegaRacer Engine Starting...");
     init_all_systems();
     reset_race();
+
+    uint8_t frame_counter = 0;
 
     while (1) {
         // 1. SYNC
@@ -279,6 +291,8 @@ int main(void) {
                 uint16_t player_frame_start_y = car.y;
 
                 update_player(&car);
+                // debug_draw_waypoints(); 
+
                 update_player_progress(); // Updates car.total_progress
 
                 update_ai();
@@ -298,6 +312,20 @@ int main(void) {
                     car.y = player_frame_start_y;
                     car.vel_x = 0;
                     car.vel_y = 0;
+                }
+
+                // Tick the clock
+                update_race_timer();
+                
+                // Draw the clock (You can do this every frame, or every 10 frames to save CPU)
+                if ((RIA.vsync & 10) == 0) {
+                    hud_draw_timer();
+                }
+
+                // finish off countdown if still active
+                if (state_timer > 0) {
+                    state_timer--; 
+                    update_countdown_display(state_timer);
                 }
 
                 // Process lap logic

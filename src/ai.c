@@ -155,6 +155,7 @@ void update_ai(void) {
             
             // Manhattan distance for VSync speed
             if ((abs(dx) + abs(dy)) < 50) {
+                ai->car.progress_steps++; // This never resets!
                 ai->current_waypoint = (ai->current_waypoint + 1) % NUM_WAYPOINTS;
             }
             
@@ -163,10 +164,20 @@ void update_ai(void) {
             // ai->last_thrust_shift = (angle_diff > 32) ? AI_REDUCED_THRUST_SHIFT : AI_MAX_THRUST_SHIFT;
             // DYNAMIC SPEED CONTROL
             // Start with the speed set by rubberbanding
+            // uint8_t angle_diff = abs((int8_t)(ai->target_angle - ai->car.angle));
+
+            // if (angle_diff > 32) {
+            //     // Sharp turn: Slow down by ONE tier
+            //     ai->last_thrust_shift = ai->base_speed_shift + 1;
+            // } else {
+            //     ai->last_thrust_shift = ai->base_speed_shift;
+            // }
+
+            // Inside update_ai -> brain turn (if i == ai_brain_turn)
             uint8_t angle_diff = abs((int8_t)(ai->target_angle - ai->car.angle));
 
             if (angle_diff > 32) {
-                // Sharp turn: Slow down by ONE tier
+                // If turning, go one tier slower than the rubberband says
                 ai->last_thrust_shift = ai->base_speed_shift + 1;
             } else {
                 ai->last_thrust_shift = ai->base_speed_shift;
@@ -272,54 +283,28 @@ void draw_ai_cars(int16_t scroll_x, int16_t scroll_y) {
 
 
 void update_ai_rubberbanding(AICar *ai) {
-    uint16_t ai_total = (uint16_t)(ai->car.laps * NUM_WAYPOINTS) + ai->current_waypoint;
+    static int16_t last_diff[3] = {0,0,0};
     
-    // Use player's target waypoint progress
-    int16_t diff = (int16_t)car.total_progress - (int16_t)ai_total;
-    static int16_t diff_old = 0;
+    // Calculate difference using the monotonic counters
+    int16_t diff = (int16_t)car.progress_steps - (int16_t)ai->car.progress_steps;
 
-    // If player is > 2 waypoints ahead, speed up AI
-    if (diff > 2) {
-        ai->base_speed_shift = AI_SPEED_FAST;
-    } 
-    // If AI is > 2 waypoints ahead, slow down AI
-    else if (diff < -2) {
-        ai->base_speed_shift = AI_SPEED_SLOW;
-    } 
-    // Close race
-    else {
-        ai->base_speed_shift = AI_SPEED_NORMAL;
+    // diff > 0: Player is ahead (AI Speeds up)
+    // diff < 0: AI is ahead (AI Slows down)
+
+    if (diff > 1) {
+        ai->base_speed_shift = AI_SPEED_FAST; // 2
+    } else if (diff < -1) {
+        ai->base_speed_shift = AI_SPEED_SLOW;      // 4
+    } else {
+        ai->base_speed_shift = AI_SPEED_NORMAL;    // 3
     }
 
-    if (diff != diff_old) {
-        printf("AI Car Rubberbanding: diff=%d, base_speed_shift=%d, player_progress=%d, ai_total=%d\n", diff, ai->base_speed_shift, car.total_progress, ai_total);
-        diff_old = diff;
+    // Diagnostic logging (No more lap glitches!)
+    uint8_t id = ai->sprite_index - 1;
+    if (diff != last_diff[id]) {
+        printf("Car %d: Diff %d | Shift %d | P_Steps: %d | AI_Steps: %d\n", 
+               id, diff, ai->base_speed_shift, car.progress_steps, ai->car.progress_steps);
+        last_diff[id] = diff;
     }
-
 }
 
-// void update_ai_rubberbanding(AICar *ai) {
-//     uint16_t ai_progress = (ai->car.laps * NUM_WAYPOINTS) + ai->current_waypoint;
-//     int16_t diff_old = 0;
-//     int16_t diff = (int16_t)car.total_progress - (int16_t)ai_progress;
-
-//     // diff > 0: Player is ahead
-//     // diff < 0: AI is ahead
-
-//     if (diff > 3) {
-//         // Player is 3+ waypoints ahead: AI catches up
-//         ai->base_speed_shift = AI_SPEED_FAST; 
-//     } else if (diff < -3) {
-//         // AI is 3+ waypoints ahead: AI slows down
-//         ai->base_speed_shift = AI_SPEED_SLOW;
-//     } else {
-//         // It's a close race: Standard speed
-//         ai->base_speed_shift = AI_SPEED_NORMAL;
-//     }
-
-//     if (diff != diff_old) {
-//         printf("AI Car Rubberbanding: diff=%d, base_speed_shift=%d, player_progress=%d, ai_progress=%d\n", diff, ai->base_speed_shift, car.total_progress, ai_progress);
-//         diff_old = diff;
-//     }
-
-// }

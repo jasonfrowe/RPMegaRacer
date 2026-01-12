@@ -32,8 +32,8 @@ void hud_refresh_stats(uint8_t lap, uint16_t speed) {
     char buf[10];
     
     // 1. Update Lap Display (Top Left)
-    // LAP: 1/3
-    sprintf(buf, "LAP:%d/3", lap + 1);
+    // LAP: 1/5
+    sprintf(buf, "LAP:%d/5", lap + 1);
     hud_print(HUD_COL_LAPS, HUD_ROW, buf, HUD_COL_WHITE, HUD_COL_BG);
 
     // 2. Update Speed Display (Top Right)
@@ -43,13 +43,6 @@ void hud_refresh_stats(uint8_t lap, uint16_t speed) {
 }
 
 void update_countdown_display(uint16_t delay) {
-    // delay counts down from 600 to 0
-    // 600-481: Clear/Ready
-    // 480-421: 3
-    // 420-361: 2
-    // 360-301: 1
-    // 300-241: GO!
-    // < 240: Clear
 
     if (delay > 480) {
         hud_print(16, 15, " PREPARE! ", HUD_COL_WHITE, HUD_COL_BG);
@@ -69,36 +62,36 @@ void update_countdown_display(uint16_t delay) {
 void update_title_screen(void) {
     // Flash "PRESS FIRE" using vsync bits
     if (RIA.vsync & 0x20) {
-        hud_print(12, 12, " PRESS FIRE TO START ", 15, 0);
+        hud_print(10, 15, " PRESS FIRE TO START ", 15, 0);
     } else {
-        hud_print(12, 12, "                     ", 0, 0);
+        hud_print(10, 15, "                     ", 0, 0);
     }
     
-    hud_print(10, 5, " *** MEGA RACER RP6502 *** ", 11, 0);
+    hud_print(7, 12, " *** MEGA RACER RP6502 *** ", 11, 0);
 
     if (is_action_pressed(0, ACTION_FIRE)) {
         // Clear title text
-        hud_print(12, 12, "                     ", 0, 0);
-        hud_print(10, 5,  "                           ", 0, 0);
+        hud_print(10, 15, "                     ", 0, 0);
+        hud_print(7, 12 ,  "                           ", 0, 0);
         current_state = STATE_COUNTDOWN;
         state_timer = COUNTDOWN_TOTAL_TIME; 
     }
 }
 
 void update_finished_screen(void) {
-    hud_print(15, 10, " RACE FINISHED ", 10, 0);
+    hud_print(13, 12, " RACE FINISHED ", 10, 0);
     
     // Determine placement (Simplified for now)
     if (car.laps >= 5) {
-        hud_print(16, 12, " YOU WON! ", 14, 0);
+        hud_print(16, 14, " YOU WON! ", 14, 0);
     } else {
-        hud_print(16, 12, " YOU LOST ", 12, 0);
+        hud_print(16, 14, " YOU LOST ", 12, 0);
     }
 
     if (state_timer > 0) {
         state_timer--;
     } else {
-        hud_print(10, 15, " PRESS START TO RESET ", 15, 0);
+        hud_print(10, 17, " PRESS START TO RESET ", 15, 0);
         if (is_action_pressed(0, ACTION_PAUSE)) { // START button
             reset_race();
         }

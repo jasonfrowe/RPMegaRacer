@@ -137,7 +137,7 @@ void init_player(void) {
 uint8_t is_colliding_fast(int16_t px, int16_t py) {
     int16_t cx = px + 8; // Center of 16x16
     int16_t cy = py + 8;
-    #define H 5 // 10x10 hitbox
+    #define H 4 // 10x10 hitbox
 
     // Corners
     if (get_terrain_at(cx - H, cy - H) == TERRAIN_WALL) return 1;
@@ -256,6 +256,8 @@ void update_player(Car *p) {
     if (p->y > 24576 - 0x200) p->y = 24576 - 0x200;
 }
 
+
+
 // OPTIMIZED: Direct XRAM writes with correct layout
 void draw_player(Car *p, int16_t screen_x, int16_t screen_y) {
     uint8_t ang = p->angle;
@@ -276,6 +278,7 @@ void draw_player(Car *p, int16_t screen_x, int16_t screen_y) {
     RIA.rw0 = ty & 0xFF;   RIA.rw0 = ty >> 8;    // TY
     RIA.rw0 = screen_x & 0xFF; RIA.rw0 = screen_x >> 8; 
     RIA.rw0 = screen_y & 0xFF; RIA.rw0 = screen_y >> 8; 
+
 }
 
 void update_camera(Car *p) {
@@ -339,29 +342,15 @@ void update_lap_logic(Car *p, bool is_player) {
 }
 
 void update_player_progress(void) {
-    // 1. Convert position to pixels
     int16_t px = (car.x >> 6) + 8;
     int16_t py = (car.y >> 6) + 8;
 
-    // 2. Target current waypoint
     int16_t dx = abs(waypoints[car.current_waypoint].x - px);
     int16_t dy = abs(waypoints[car.current_waypoint].y - py);
     
-    // 3. LARGER RADIUS FOR HUMAN PLAYER (48 pixels instead of 32)
-    // This prevents the player_progress from "stalling" while the AI passes
-    if (dx < 48 && dy < 48) {
+    // Large 64px radius for the human player
+    if (dx <80 && dy < 80) {
+        car.progress_steps++; // This never resets!
         car.current_waypoint = (car.current_waypoint + 1) % NUM_WAYPOINTS;
-    }
-
-    // 4. THE STABILIZER:
-    // If waypoint is 0 but checkpoint logic hasn't ticked the lap yet,
-    // we "cheat" the math to prevent the total_progress from dropping to 0.
-    uint16_t effective_laps = car.laps;
-    if (car.current_waypoint == 0 && car.next_checkpoint != 1) {
-        // We are on the finish line but haven't 'officially' started the next lap
-        // Treat us as if we are still on the previous lap at the final waypoint
-        car.total_progress = (effective_laps * NUM_WAYPOINTS) + NUM_WAYPOINTS;
-    } else {
-        car.total_progress = (effective_laps * NUM_WAYPOINTS) + car.current_waypoint;
     }
 }
