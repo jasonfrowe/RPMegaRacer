@@ -55,10 +55,7 @@ uint8_t atan2_8(int16_t dy, int16_t dx) {
 
 AICar ai_cars[NUM_AI_CARS];
 
-Waypoint waypoints[NUM_WAYPOINTS] = {
-    {255, 60}, {120, 50}, {81, 81}, {60, 192}, {48, 255}, {88, 295}, 
-    {247, 315}, {375, 328}, {431, 295}, {435, 175}, {445, 116}, {417, 80}
-};
+Waypoint waypoints[NUM_WAYPOINTS];
 
 void init_ai(void) {
     int16_t start_positions[NUM_AI_CARS] = {40, 50, 60};  

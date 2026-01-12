@@ -91,17 +91,11 @@ static void init_graphics(void)
 
     xregn(1, 0, 1, 5, 4, 1, REDRACER_CONFIG, (NUM_AI_CARS + 1), 1); // Enable Racer sprite
 
-    // Track map data is loaded via CMakeLists.txt at 0x0850
-    TRACK_MAP_START = 0x0850;
+    // Track map offsets
+    TRACK_MAP_START = TRACK_MAP_ADDR;
     TRACK_MAP_END   = (TRACK_MAP_START + TRACK_MAP_SIZE);
-
-    // Get a copy of the track map in RAM for collision detection
-    RIA.addr0 = TRACK_MAP_START;
-    RIA.step0 = 1;
-    for (unsigned i = 0; i < TRACK_MAP_SIZE; i++) {
-        world_map[i] = RIA.rw0;
-        // printf("%02X ", world_map[i]);
-    }
+    
+    // NOTE: world_map is now loaded by load_track_data() in init_all_systems()
 
     TRACK_CONFIG = TRACK_DATA_END;
 
@@ -158,7 +152,6 @@ static void init_graphics(void)
 
     printf("Redracer Data at 0x%04X\n", REDRACER_DATA);
     printf("Redracer Config at 0x%04X\n", REDRACER_CONFIG);
-    printf("Track Map at 0x%04X - 0x%04X\n", TRACK_MAP_START, TRACK_MAP_END);
     printf("Track Config at 0x%04X\n", TRACK_CONFIG);
     printf("Text Config at 0x%04X\n", TEXT_CONFIG);
     printf("Text Messages at 0x%04X - 0x%04X\n", text_message_addr, text_storage_end);
@@ -185,7 +178,8 @@ void init_all_systems(void) {
     init_player();
     init_ai();
     init_graphics();
-    init_track_physics();
+    init_track_physics(); // Loads track01 map/collision/props
+    load_waypoints("tracks/track01/waypoints.bin");
     init_input_system();
 
     // Audio Setup

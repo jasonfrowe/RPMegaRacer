@@ -1,6 +1,9 @@
 #ifndef RACELOGIC_H
 #define RACELOGIC_H
 
+#include <stdint.h>
+#include <stdbool.h>
+
 #define COUNTDOWN_TOTAL_TIME 480 // 4 seconds at 120 FPS
 
 typedef enum {
@@ -11,6 +14,7 @@ typedef enum {
     STATE_GAMEOVER
 } GameState;
 
+extern void load_waypoints(const char* filename);
 extern void update_race_logic(void);
 extern void reset_race(void);
 extern void update_race_timer(void);

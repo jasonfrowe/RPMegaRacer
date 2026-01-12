@@ -1,9 +1,34 @@
-#include <stdint.h>
-#include <stdbool.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <rp6502.h>
 #include "racelogic.h"
 #include "hud.h"
 #include "player.h"
 #include "ai.h"
+
+void load_waypoints(const char* filename) {
+    int fd = open(filename, O_RDONLY);
+    if (fd < 0) {
+        printf("Error opening %s\n", filename);
+        return;
+    }
+    
+    uint16_t count;
+    read(fd, &count, 2);
+    
+    if (count > NUM_WAYPOINTS) {
+        printf("Error: Too many waypoints %d (max %d)\n", count, NUM_WAYPOINTS);
+        count = NUM_WAYPOINTS;
+    }
+    
+    // Read directly into the global waypoints array
+    // Each waypoint is 4 bytes (2x int16)
+    int bytes = read(fd, waypoints, count * sizeof(Waypoint));
+    
+    close(fd);
+    printf("Loaded %d waypoints from %s\n", count, filename);
+}
 
 
 // Race time tracking    

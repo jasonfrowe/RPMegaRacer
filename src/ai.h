@@ -10,7 +10,7 @@
 #define AI_SPEED_SLOW      4  // Letting player catch up
 
 #define NUM_AI_CARS 3
-#define NUM_WAYPOINTS 12
+#define NUM_WAYPOINTS 64
 #define WAYPOINT_REACH_RADIUS 40
 #define WAYPOINT_LOOKAHEAD 10
 

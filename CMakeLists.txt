@@ -6,6 +6,7 @@ set(LLVM_MOS_PLATFORM rp6502)
 find_package(llvm-mos-sdk REQUIRED)
 
 project(RPMegaRacer C CXX ASM)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Define the option (Default is ON/Native) 
 option(USE_NATIVE_OPL2 "Use the RIA native OPL2 support" ON)
@@ -19,12 +20,8 @@ endif()
 
 add_executable(RPMegaRacer)
 rp6502_asset(RPMegaRacer 0x10000 images/RedRacer.bin)
-rp6502_asset(RPMegaRacer 0x10850 images/Track_Map_A.bin)
-rp6502_asset(RPMegaRacer 0x11450 images/Track_A_tiles.bin)
 rp6502_executable(RPMegaRacer
     RedRacer.bin.rp6502
-    Track_Map_A.bin.rp6502
-    Track_A_tiles.bin.rp6502
     DATA file
     RESET file
     ${CMAKE_CURRENT_SOURCE_DIR}/src/main.hlp

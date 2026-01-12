@@ -1,0 +1,17 @@
+{
+    "configurations": [
+        {
+            "name": "RPMegaRacer",
+            "compileCommands": "${workspaceFolder}/build/target-native/compile_commands.json",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "clang-x64",
+            "compilerPath": "/Users/jasonrowe/Software/rp6502/llvm-mos/bin/mos-clang",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/Users/jasonrowe/Software/rp6502/llvm-mos/mos-platform/rp6502/include"
+            ]
+        }
+    ],
+    "version": 4
+}

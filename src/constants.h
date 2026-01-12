@@ -19,7 +19,8 @@
 // 0x1450-0x3370: Tile graphics
 
 // Tile data configuration
-#define TRACK_DATA              0x1450U // Address for track tile data in 
+#define TRACK_MAP_ADDR          0x0850U // Address for track map data in XRAM
+#define TRACK_DATA              0x1450U // Address for track tile data in XRAM (Re-used for tiles.bin)
 #define TRACK_DATA_SIZE         0x1F20U // Size of track tile data (7968 bytes)
 #define TRACK_DATA_END          (TRACK_DATA + TRACK_DATA_SIZE)
 
