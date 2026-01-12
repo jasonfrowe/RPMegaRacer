@@ -40,15 +40,25 @@ void reset_race(void) {
     
     current_state = STATE_TITLE;
     countdown_active = false;
+    state_timer = 0;
 
+    race_winner = 0xFF;
+
+    init_player();
+    car.laps = 0;
     car.current_waypoint = 1; // Looking for the first corner
-    car.progress_steps = 1;   // Start line is step 0, next is 1
+    car.progress_steps = 1;   
+    car.next_checkpoint = 1;  // IMPORTANT: Looking for Checkpoint 1 (Gate logic)
     
+    init_ai();
     for (int i=0; i<3; i++) {
+        ai_cars[i].car.laps = 0;
         ai_cars[i].car.current_waypoint = 1;
         ai_cars[i].car.progress_steps = 1;
-        ai_cars[i].base_speed_shift = 5;
-        ai_cars[i].car.laps = 0;
+        ai_cars[i].car.next_checkpoint = 1; // AI must hit CP gates too
+        ai_cars[i].base_speed_shift = 5;    // Start at Normal/Slow speed
+        ai_cars[i].rebound_timer = 0;
+        ai_cars[i].stuck_timer = 0;
     }
 
     // ... car resets ...
@@ -58,10 +68,6 @@ void reset_race(void) {
     
     // Clear the timer area on the HUD
     hud_print(16, 0, "00:00:00", HUD_COL_WHITE, HUD_COL_BG);
-
-    // Reset winner
-    race_winner = 0;
-    car.laps = 0;
 
 }
 

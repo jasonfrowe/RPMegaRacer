@@ -336,21 +336,21 @@ int main(void) {
                     update_lap_logic(&ai_cars[i].car, false);
                 }
 
-                // Check for Race End (5 Laps)
                 // --- CHECK FOR WINNER ---
-                if (car.laps >= 5) {
-                    race_winner = 0; // Player (Red car) won
-                    current_state = STATE_FINISHED;
-                    state_timer = 300; // 5 seconds
-                    stop_engine_sound();
-                } else {
-                    for (uint8_t i = 0; i < NUM_AI_CARS; i++) {
-                        if (ai_cars[i].car.laps >  5) {
-                            race_winner = i + 1; // AI won (1, 2, or 3)
-                            current_state = STATE_FINISHED;
-                            state_timer = 300;
-                            stop_engine_sound();
-                            break;
+                // Only check if we don't have a winner yet
+                if (race_winner == 0xFF) {
+                    if (car.laps >= 5) {
+                        race_winner = 0; // Player ID
+                        current_state = STATE_FINISHED;
+                        state_timer = 300;
+                    } else {
+                        for (uint8_t i = 0; i < NUM_AI_CARS; i++) {
+                            if (ai_cars[i].car.laps >= 5) {
+                                race_winner = i + 1; // AI ID
+                                current_state = STATE_FINISHED;
+                                state_timer = 300;
+                                break;
+                            }
                         }
                     }
                 }
