@@ -1,6 +1,6 @@
 # RP Mega Racer
 
-A high-performance, top-down arcade racing game for the **RP6502 PicoComputer**, heavily inspired by Atari's classic *Super Sprint* and the *Micro Machines* series.
+A high-performance, top-down arcade racing game for the [**RP6502 PicoComputer**](https://picocomputer.github.io/), heavily inspired by Atari's classic *Super Sprint* and the *Micro Machines* series.
 
 ## About
 
@@ -43,7 +43,6 @@ This project uses CMake and LLVM-MOS to target the 65C02 CPU.
 ### Requirements
 
 - [LLVM-MOS SDK](https://llvm-mos.org/)
-- [RP6502 SDK & Tools](https://github.com/picocomputer/rp6502-sdk)
 - CMake 3.18+
 
 ### Build Instructions

@@ -1,33 +1,34 @@
 ### **Phase 1: Control & State Foundations**
 *   [x] **Input Remapping:**
-    *   Map `GP_BTN_B` (and a keyboard key like 'R') to `ACTION_RESCUE`.
-    *   Map `GP_BTN_START` to a new `ACTION_PAUSE`.
+    *  [x] Map `GP_BTN_B` (and a keyboard key like 'R') to `ACTION_RESCUE`.
+    *  [x] Map `GP_BTN_START` to a new `ACTION_PAUSE`.
 *   [ ] **Game State Machine:** Implement a `current_state` variable in `main.c`:
-    *   `STATE_TITLE`: Waiting for Start.
-    *   `STATE_COUNTDOWN`: The 3-2-1 sequence.
-    *   `STATE_RACING`: Active physics and AI.
+    *  [x] `STATE_TITLE`: Waiting for Start.
+    *  [x] `STATE_COUNTDOWN`: The 3-2-1 sequence.
+    *  [x] `STATE_RACING`: Active physics and AI.
     *   [ ] **Pause State:** If `ACTION_PAUSE` is hit, stop all physics updates but keep OPL2 music running (perhaps at lower volume).
-    *   `STATE_FINISHED`: Player crosses Lap 5.
+    *  [x] `STATE_FINISHED`: Player crosses Lap 5.
     *   `STATE_GAMEOVER`: Showing results/leaderboard.
 *   [ ] **Race Manager:**
-    *   Track `player_lap_count` and `ai_lap_counts[3]`.
-    *   Trigger `STATE_FINISHED` when any car hits Lap 5.
+    *  [x] Track `player_lap_count` and `ai_lap_counts[3]`.
+    *  [x] Trigger `STATE_FINISHED` when any car hits Lap 5.
 
 ### **Phase 2: HUD & UI Expansion**
 *   [ ] **The Race Timer:**
-    *   Create a `uint32_t race_frames` counter that starts at `STATE_RACING`.
-    *   Display as `MM:SS:CC` (Minutes:Seconds:Centiseconds) in the HUD.
+    *  [x] Create a `uint32_t race_frames` counter that starts at `STATE_RACING`.
+    *  [x] Display as `MM:SS:CC` (Minutes:Seconds:Centiseconds) in the HUD.
+    *  [ ] Make clock display cleaner / smoother
 *   [ ] **Title Screen:**
-    *   Use Mode 1 (Text) or a static Tile map on Plane 1 to show a "MEGA RACER" logo.
-    *   Add "Press Start to Race."
+    *  [ ] Use Mode 1 (Text) or a static Tile map on Plane 1 to show a "MEGA RACER" logo.
+    *  [x] Add "Press Start to Race."
 *   [ ] **Ranking Logic:**
-    *   Every second, calculate who is 1st through 4th based on (Laps * WaypointID).
-    *   Display "POS: 1/4" in the HUD.
+    *  [x] Every second, calculate who is 1st through 4th based on (Laps * WaypointID).
+    *  [ ] Display "POS: 1/4" in the HUD.
 
 ### **Phase 3: Gameplay "Juice" & Mechanics**
-*   [ ] **AI Rubber Banding:** 
-    *   If Player is 1st: Decrease `AI_THRUST_SHIFT` (AI gets faster/aggressive).
-    *   If Player is 4th: Increase `AI_THRUST_SHIFT` (AI slows down to let player catch up).
+*   [x] **AI Rubber Banding:** 
+    *  [x] If Player is 1st: Decrease `AI_THRUST_SHIFT` (AI gets faster/aggressive).
+    *  [x] If Player is 4th: Increase `AI_THRUST_SHIFT` (AI slows down to let player catch up).
 *   [ ] **High Impact Explosions:**
     *   If `abs(velocity)` is near max and `terrain == TERRAIN_WALL`:
     *   Trigger `play_psg_explosion()`.
@@ -127,7 +128,7 @@ Since you are using LLVM-MOS, you can use `structs` to manage car state, which w
 ### Phase 5: OPL2 Audio Implementation
 This is the heart of your "Mega" version.
 - [x] **Driver Integration:** Integrate your `RP6502_OPL2` code.
-- [ ] **Dynamic Engine Hum:**
+- [x] **Dynamic Engine Hum:**
     - Use one OPL2 channel for the player's engine.
     - Map the car's `velocity` to the OPL2 **F-Number (frequency)**. As the car goes faster, the pitch of the FM synth rises.
 - [ ] **SFX Synthesis:** Create FM patches for:
