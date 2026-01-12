@@ -205,7 +205,7 @@ void resolve_all_collisions(void) {
     // Keep your heavy resolve_car_collision function for these
     // It should include the wall-checks and sound effects
     for (int i = 0; i < NUM_AI_CARS; i++) {
-        resolve_car_collision(&car, &ai_cars[i].car); 
+        resolve_player_ai_collision(&car, &ai_cars[i]); 
     }
 
     // B. LIGHT REPULSION: AI vs each other

@@ -5,56 +5,74 @@
 #include "ai.h"
 #include "track.h"
 
-#define CAR_PUSH_FORCE 0x080 // 2.0 pixels (Stronger push)
-#define IMPACT_SPIN 16       // Large angle jerk (approx 45 degrees)
+// Physics Tuning
+#define PLAYER_PUSH_FORCE 0x0C0 // 1.0 pixel (Player resists push)
+#define AI_PUSH_FORCE_HVY 0x0C0 // 3.0 pixels (AI gets shoved)
+#define PLAYER_SPIN       8     // Minor twitch
+#define AI_SPIN           8    // Huge spinout
 
-void resolve_car_collision(Car *c1, Car *c2) {
-    int16_t dx = (c2->x >> 6) - (c1->x >> 6);
-    int16_t dy = (c2->y >> 6) - (c1->y >> 6);
+// Rebound Timers (frames of "stun")
+#define PLAYER_STUN       5
+#define AI_STUN           10
+
+void resolve_player_ai_collision(Car *p, AICar *ai) {
+    Car *c2 = &ai->car; // Short alias for the AI's physics car
+
+    int16_t dx = (c2->x >> 6) - (p->x >> 6);
+    int16_t dy = (c2->y >> 6) - (p->y >> 6);
     
     // Quick Manhattan exit
-    if (abs(dx) > 12 || abs(dy) > 12) return;
+    if (abs(dx) > 14 || abs(dy) > 14) return; // Slightly larger detection radius for high speed
 
     uint16_t dist_sq = (dx * dx) + (dy * dy);
 
-    if (dist_sq < 100 && dist_sq > 0) {
-        // --- 1. MOMENTUM SWAP ---
-        int16_t temp_vx = c1->vel_x;
-        int16_t temp_vy = c1->vel_y;
-        c1->vel_x = c2->vel_x;
-        c1->vel_y = c2->vel_y;
-        c2->vel_x = temp_vx;
-        c2->vel_y = temp_vy;
+    if (dist_sq < 140 && dist_sq > 0) { // 140 = ~11.8px distance
+        
+        // --- 1. MOMENTUM SWAP (Weighted) ---
+        // Player keeps 50% of their momentum + 50% of AI's
+        // AI takes 100% of Player's momentum
+        int16_t p_vx = p->vel_x;
+        int16_t p_vy = p->vel_y;
+        
+        p->vel_x = (p->vel_x >> 1) + (c2->vel_x >> 1);
+        p->vel_y = (p->vel_y >> 1) + (c2->vel_y >> 1);
+        
+        c2->vel_x = p_vx; // AI gets slammed with full player force
+        c2->vel_y = p_vy;
 
         // --- 2. THE SPIN ---
-        c1->angle += (rand() % (IMPACT_SPIN * 2)) - IMPACT_SPIN;
-        c2->angle += (rand() % (IMPACT_SPIN * 2)) - IMPACT_SPIN;
+        p->angle += (rand() % (PLAYER_SPIN * 2)) - PLAYER_SPIN;
+        c2->angle += (rand() % (AI_SPIN * 2)) - AI_SPIN;
 
-        // --- 3. WALL-AWARE PHYSICAL SEPARATION ---
-        // We only nudge if the destination is NOT a wall.
-        // This prevents being flung into or through barriers.
+        // --- 3. PHYSICAL SEPARATION (Asymmetric) ---
+        int16_t push_x = (dx > 0) ? -1 : 1;
+        int16_t push_y = (dy > 0) ? -1 : 1;
+
+        // Player gets nudged lightly
+        int16_t p_push_x = push_x * PLAYER_PUSH_FORCE;
+        int16_t p_push_y = push_y * PLAYER_PUSH_FORCE;
         
-        int16_t push_x = (dx > 0) ? -CAR_PUSH_FORCE : CAR_PUSH_FORCE;
-        int16_t push_y = (dy > 0) ? -CAR_PUSH_FORCE : CAR_PUSH_FORCE;
-
-        // Check C1: Would the push put C1 in a wall?
-        if (get_terrain_at(((c1->x + push_x) >> 6) + 8, ((c1->y + push_y) >> 6) + 8) != TERRAIN_WALL) {
-            c1->x += push_x;
-            c1->y += push_y;
+        if (get_terrain_at(((p->x + p_push_x) >> 6) + 8, ((p->y + p_push_y) >> 6) + 8) != TERRAIN_WALL) {
+            p->x += p_push_x;
+            p->y += p_push_y;
         }
 
-        // Check C2: Would the push put C2 in a wall?
-        if (get_terrain_at(((c2->x - push_x) >> 6) + 8, ((c2->y - push_y) >> 6) + 8) != TERRAIN_WALL) {
-            c2->x -= push_x;
-            c2->y -= push_y;
+        // AI gets shoved hard
+        int16_t ai_push_x = -(push_x * AI_PUSH_FORCE_HVY); // Opposite direction
+        int16_t ai_push_y = -(push_y * AI_PUSH_FORCE_HVY);
+
+        if (get_terrain_at(((c2->x + ai_push_x) >> 6) + 8, ((c2->y + ai_push_y) >> 6) + 8) != TERRAIN_WALL) {
+            c2->x += ai_push_x;
+            c2->y += ai_push_y;
         }
 
         // --- 4. TRIGGER STUN ---
-        // Force the cars into the "rebound" state so they can't 
-        // immediately drive back into each other.
-        // Assuming you add rebound_timer to the AICar struct as well:
-        extern uint8_t rebound_timer; 
-        rebound_timer = 10; // Stun the player
+        extern uint8_t rebound_timer; // From player.c
+        rebound_timer = PLAYER_STUN;
+        ai->rebound_timer = AI_STUN;
+        
+        // Audio Feedack (Optional)
+        // play_crash_sound();
     }
 }
 
