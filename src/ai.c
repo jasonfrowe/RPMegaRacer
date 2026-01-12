@@ -129,7 +129,7 @@ void update_ai(void) {
                     
                     // --- RESCUE TELEPORT ---
                     // Find the waypoint they just came from
-                    uint8_t prev_wp = (ai->current_waypoint == 0) ? (NUM_WAYPOINTS - 1) : (ai->current_waypoint - 1);
+                    uint8_t prev_wp = (ai->current_waypoint == 0) ? (g_num_active_waypoints - 1) : (ai->current_waypoint - 1);
                     
                     // Snap to the center of the previous waypoint
                     ai->car.x = (uint16_t)waypoints[prev_wp].x << 6;
@@ -153,7 +153,10 @@ void update_ai(void) {
             // Manhattan distance for VSync speed
             if ((abs(dx) + abs(dy)) < 50) {
                 ai->car.progress_steps++; // This never resets!
-                ai->current_waypoint = (ai->current_waypoint + 1) % NUM_WAYPOINTS;
+                ai->current_waypoint++;
+                if (ai->current_waypoint >= g_num_active_waypoints) {
+                    ai->current_waypoint = 0;
+                }
             }
             
             ai->target_angle = (192 - atan2_8(dy, dx)) & 0xFF;

@@ -61,10 +61,10 @@ def process_track(bin_file, output_dir):
         collision_masks.extend(tile_mask_bytes)
 
         # --- 2. Generate Properties (1 byte per tile) ---
-        # 0=Wall, 1=Road, 2=Grass
-        TERRAIN_WALL = 0
-        TERRAIN_ROAD = 1
-        TERRAIN_GRASS = 2
+        # 0=Road, 1=Grass, 2=Wall (Must match track.h)
+        TERRAIN_ROAD = 0
+        TERRAIN_GRASS = 1
+        TERRAIN_WALL = 2
 
         prop_val = TERRAIN_WALL
 

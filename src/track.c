@@ -84,6 +84,36 @@ void load_track_data(const char* track_dir) {
     load_file_to_ram(path, tile_properties, sizeof(tile_properties));
 }
 
+#include "ai.h"
+
+uint16_t g_num_active_waypoints = NUM_WAYPOINTS;
+
+void load_waypoints(const char* filename) {
+    int fd = open(filename, O_RDONLY);
+    if (fd < 0) {
+        printf("Error opening %s\n", filename);
+        return;
+    }
+
+    uint16_t file_count = 0;
+    // 1. Read header (2 bytes)
+    read(fd, &file_count, 2);
+
+    printf("Loading Waypoints: File has %d\n", file_count);
+
+    if (file_count > NUM_WAYPOINTS) {
+        printf("Warning: Truncating waypoints to %d\n", NUM_WAYPOINTS);
+        g_num_active_waypoints = NUM_WAYPOINTS;
+    } else {
+        g_num_active_waypoints = file_count;
+    }
+
+    // 2. Read the binary data directly into the array
+    read(fd, waypoints, g_num_active_waypoints * sizeof(Waypoint));
+    
+    close(fd);
+}
+
 void init_track_physics(void) {
     // Defaults (in case load fails or partial load)
     memset(tile_collision_masks, 0, sizeof(tile_collision_masks));

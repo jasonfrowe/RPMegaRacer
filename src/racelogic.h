@@ -14,7 +14,7 @@ typedef enum {
     STATE_GAMEOVER
 } GameState;
 
-extern void load_waypoints(const char* filename);
+
 extern void update_race_logic(void);
 extern void reset_race(void);
 extern void update_race_timer(void);

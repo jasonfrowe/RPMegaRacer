@@ -335,12 +335,14 @@ int main(void) {
                 if (race_winner == 0xFF) {
                     if (car.laps >= 5) {
                         race_winner = 0; // Player ID
+                        stop_engine_sound();
                         current_state = STATE_FINISHED;
                         state_timer = 300;
                     } else {
                         for (uint8_t i = 0; i < NUM_AI_CARS; i++) {
                             if (ai_cars[i].car.laps >= 5) {
                                 race_winner = i + 1; // AI ID
+                                stop_engine_sound();
                                 current_state = STATE_FINISHED;
                                 state_timer = 300;
                                 break;

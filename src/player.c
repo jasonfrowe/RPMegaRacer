@@ -85,7 +85,7 @@ void rescue_player(Car *p) {
     int16_t py = p->y >> 6;
 
     // 1. Find the geographically nearest waypoint
-    for (uint8_t i = 0; i < NUM_WAYPOINTS; i++) {
+    for (uint8_t i = 0; i < g_num_active_waypoints; i++) {
         int16_t dx = px - waypoints[i].x;
         int16_t dy = py - waypoints[i].y;
         
@@ -110,7 +110,8 @@ void rescue_player(Car *p) {
 
     // 4. Set orientation
     // Point the car toward the NEXT waypoint in the sequence
-    uint8_t next_wp = (best_wp + 1) % NUM_WAYPOINTS;
+    uint8_t next_wp = best_wp + 1;
+    if (next_wp >= g_num_active_waypoints) next_wp = 0;
     int16_t ndx = waypoints[next_wp].x - waypoints[best_wp].x;
     int16_t ndy = waypoints[next_wp].y - waypoints[best_wp].y;
 
@@ -392,7 +393,10 @@ void update_player_progress(void) {
     // Large 64px radius for the human player
     if (dx <80 && dy < 80) {
         car.progress_steps++; // This never resets!
-        car.current_waypoint = (car.current_waypoint + 1) % NUM_WAYPOINTS;
+        car.current_waypoint++;
+        if (car.current_waypoint >= g_num_active_waypoints) {
+             car.current_waypoint = 0;
+        }
     }
 }
 
