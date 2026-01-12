@@ -30,4 +30,6 @@ extern void update_countdown_display(uint16_t delay);
 extern void update_title_screen(void);
 extern void update_finished_screen(void);
 
+extern uint8_t race_winner;
+
 #endif // HUD_H

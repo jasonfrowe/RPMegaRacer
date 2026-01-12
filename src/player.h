@@ -3,6 +3,10 @@
 
 #include <stdbool.h>
 
+// DRS System Constants
+#define DRS_MAX_CHARGE 300    // 5 seconds
+#define DRS_BOOST_TIME 120    // 2 seconds of boost
+
 #define FRICTION_SHIFT 5  // Higher = less friction (more "icy")
 #define THRUST_SCALER  3  // Tuning: how fast the car accelerates
 #define TURN_SPEED     4  // How many angle units to turn per frame
@@ -19,6 +23,9 @@ typedef struct {
     uint8_t current_waypoint;  // For tracking progress
     uint16_t total_progress; // Track progress for AI comparison
     uint16_t progress_steps;  // INCREMENTS ONLY: 0, 1, 2, 3, 4, 5... 60...
+    // --- DRS System ---
+    uint16_t drs_charge;      // 0 to 300 (5 seconds at 60Hz)
+    uint8_t drs_active_timer; // Countdown while boosting
 } Car;
 
 extern uint8_t startX;
@@ -37,5 +44,7 @@ extern void update_camera(Car *p);
 extern void update_lap_logic(Car *p, bool is_player);
 extern uint8_t is_colliding_fast(int16_t px, int16_t py);
 extern void update_player_progress(void);
+extern void update_drs_system(Car *p);
+extern void hud_draw_drs(Car *p);
 
 #endif // PLAYER_H

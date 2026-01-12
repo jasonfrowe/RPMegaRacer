@@ -48,6 +48,7 @@ void reset_race(void) {
         ai_cars[i].car.current_waypoint = 1;
         ai_cars[i].car.progress_steps = 1;
         ai_cars[i].base_speed_shift = 5;
+        ai_cars[i].car.laps = 0;
     }
 
     // ... car resets ...
@@ -58,6 +59,9 @@ void reset_race(void) {
     // Clear the timer area on the HUD
     hud_print(16, 0, "00:00:00", HUD_COL_WHITE, HUD_COL_BG);
 
+    // Reset winner
+    race_winner = 0;
+    car.laps = 0;
 
 }
 
@@ -95,4 +99,13 @@ void update_race_timer(void) {
             if (race_minutes > 99) race_minutes = 99; // Cap at 99 mins
         }
     }
+}
+
+bool is_player_leading(void) {
+    for (int i = 0; i < NUM_AI_CARS; i++) {
+        if (ai_cars[i].car.progress_steps > car.progress_steps) {
+            return false; // Someone is further ahead than the player
+        }
+    }
+    return true;
 }

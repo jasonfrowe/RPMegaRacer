@@ -78,22 +78,40 @@ void update_title_screen(void) {
     }
 }
 
+uint8_t race_winner = 0;
+
 void update_finished_screen(void) {
-    hud_print(13, 12, " RACE FINISHED ", 10, 0);
+    // Access the winner defined in main
+    extern uint8_t race_winner;
+
+    hud_print(13, 12, " RACE FINISHED ", HUD_COL_CYAN, HUD_COL_BG);
     
-    // Determine placement (Simplified for now)
-    if (car.laps >= 5) {
-        hud_print(16, 14, " YOU WON! ", 14, 0);
+    if (race_winner == 0) {
+        // Player Victory
+        hud_print(15, 14, " YOU WON! ", HUD_COL_GREEN, HUD_COL_BG);
+        hud_print(9, 16, " CHAMPION OF THE TRACK ", HUD_COL_YELLOW, HUD_COL_BG);
     } else {
-        hud_print(16, 14, " YOU LOST ", 12, 0);
+        // AI Victory
+        char ai_msg[] = " AI 0 WON! ";
+        ai_msg[4] = race_winner + '0'; // Convert ID to character '1', '2', or '3'
+        
+        hud_print(15, 14, ai_msg, HUD_COL_RED, HUD_COL_BG);
+        hud_print(9, 16, " BETTER LUCK NEXT TIME ", HUD_COL_GREY, HUD_COL_BG);
     }
 
     if (state_timer > 0) {
         state_timer--;
     } else {
-        hud_print(10, 17, " PRESS START TO RESET ", 15, 0);
-        if (is_action_pressed(0, ACTION_PAUSE)) { // START button
-            reset_race();
+        // Blink the reset prompt
+        if (RIA.vsync & 0x10) {
+            hud_print(10, 18, " PRESS START TO RESET ", HUD_COL_WHITE, HUD_COL_BG);
+        } else {
+            hud_print(10, 18, "                      ", 0, 0);
+        }
+
+        if (is_action_pressed(0, ACTION_PAUSE)) { 
+            reset_race(); 
         }
     }
 }
+

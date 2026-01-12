@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include "ai.h"
 #include "racelogic.h"
+#include "hud.h"
 
 // External Sin table
 extern const int8_t SIN_LUT[256];
@@ -130,6 +131,8 @@ void init_player(void) {
     car.angle = 64; 
     car.laps = 0;
     car.next_checkpoint = 1; // They've started, looking for CP1
+    car.drs_charge = 0;
+    car.drs_active_timer = 0;
 }
 
 // OPTIMIZED: Checks 4 corners using 16-bit pixel coordinates
@@ -191,16 +194,37 @@ void update_player(Car *p) {
     }
 
     // --- 3. THRUST & FRICTION ---
+    // A. Calculate current power tier
+    uint8_t current_thrust_shift = THRUST_SCALER;
+
+    if (p->drs_active_timer > 0) {
+        current_thrust_shift = THRUST_SCALER - 1; // Boosted power
+        p->drs_active_timer--; // CRUCIAL: Count down the boost time every frame!
+    }
+
     if (rebound_timer > 0) {
         rebound_timer--;
     } else {
+        // B. Main Throttle (This now automatically uses DRS if active)
         if (is_action_pressed(0, ACTION_FIRE)) {
-            p->vel_x -= (int16_t)s >> THRUST_SCALER;
-            p->vel_y -= (int16_t)c >> THRUST_SCALER;
+            p->vel_x -= (int16_t)s >> current_thrust_shift;
+            p->vel_y -= (int16_t)c >> current_thrust_shift;
         }
+
+        // C. Reverse Thrust
         if (is_action_pressed(0, ACTION_SUPER_FIRE)) {
             p->vel_x += (int16_t)s >> (THRUST_SCALER + 1);
             p->vel_y += (int16_t)c >> (THRUST_SCALER + 1);
+        }
+
+        // D. DRS Activation Trigger
+        // If charged and not currently boosting, check for the button press
+        if (p->drs_charge >= DRS_MAX_CHARGE && p->drs_active_timer == 0) {
+            if (is_action_pressed(0, ACTION_ALT_FIRE)) {
+                p->drs_charge = 0;           // Consume the charge immediately
+                p->drs_active_timer = 120;   // Set boost for 2 seconds (120 frames)
+                // play_psg_boost_sfx();
+            }
         }
     }
 
@@ -353,4 +377,53 @@ void update_player_progress(void) {
         car.progress_steps++; // This never resets!
         car.current_waypoint = (car.current_waypoint + 1) % NUM_WAYPOINTS;
     }
+}
+
+void update_drs_system(Car *p) {
+    // 1. Logic for Active Boost
+    if (p->drs_active_timer > 0) {
+        p->drs_active_timer--;
+        return; // Charge is frozen while boosting
+    }
+
+    // 2. Charging Logic (Only if NOT leading)
+    if (!is_player_leading()) {
+        if (p->drs_charge < DRS_MAX_CHARGE) {
+            p->drs_charge++;
+        }
+    }
+
+    // 3. Activation
+    if (p->drs_charge >= DRS_MAX_CHARGE) {
+        if (is_action_pressed(0, ACTION_SUPER_FIRE)) {
+            p->drs_charge = 0;
+            p->drs_active_timer = DRS_BOOST_TIME;
+            // play_psg_drs_sound(); 
+        }
+    }
+}
+
+void hud_draw_drs(Car *p) {
+    // 13 bytes: 12 for "[----------]" + 1 for the null terminator \0
+    char bar[] = "[----------]"; 
+    uint8_t segments = (p->drs_charge / 30); // 300 / 30 = 10 segments
+    uint8_t color = HUD_COL_RED;
+
+    if (p->drs_active_timer > 0) {
+        // Boost is active! Show remaining time (120 / 12 = 10 segments)
+        segments = (p->drs_active_timer / 12); 
+        color = HUD_COL_YELLOW;
+    } else if (p->drs_charge >= DRS_MAX_CHARGE) {
+        segments = 10;
+        color = (RIA.vsync & 0x08) ? HUD_COL_CYAN : HUD_COL_WHITE;
+    }
+
+    // Fill the bar (indices 1 through 10)
+    // index 0 is '[', index 11 is ']', index 12 is '\0'
+    for (int i = 1; i <= 10; i++) {
+        bar[i] = (i <= segments) ? 0xDB : '-'; 
+    }
+
+    hud_print(1, 1, "DRS:", HUD_COL_WHITE, HUD_COL_BG);
+    hud_print(5, 1, bar, color, HUD_COL_BG);
 }

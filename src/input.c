@@ -68,7 +68,12 @@ void reset_button_mappings(uint8_t player_id)
     // ACTION_SUPER_FIRE: C key or B button (for sbullets)
     button_mappings[player_id][ACTION_SUPER_FIRE].keyboard_key = KEY_X;
     button_mappings[player_id][ACTION_SUPER_FIRE].gamepad_button = GP_FIELD_BTN0; // btn0 field
-    button_mappings[player_id][ACTION_SUPER_FIRE].gamepad_mask = GP_BTN_X;
+    button_mappings[player_id][ACTION_SUPER_FIRE].gamepad_mask = GP_BTN_B;
+
+    // ACTION_ALT_FIRE: X button (for sbullets)
+    button_mappings[player_id][ACTION_ALT_FIRE].keyboard_key = KEY_V;
+    button_mappings[player_id][ACTION_ALT_FIRE].gamepad_button = GP_FIELD_BTN0; // btn0 field
+    button_mappings[player_id][ACTION_ALT_FIRE].gamepad_mask = GP_BTN_X;
     
     // ACTION_PAUSE: START button
     button_mappings[player_id][ACTION_PAUSE].keyboard_key = KEY_ENTER;
@@ -87,9 +92,9 @@ void reset_button_mappings(uint8_t player_id)
  */
 bool load_joystick_config(void)
 {
-    // Joystick mapping from file (matches gamepad_test.c format)
+    // Ensure this struct matches the one used in gamepad_mapper.c exactly
     typedef struct {
-        uint8_t action_id;  // Index into actions array
+        uint8_t action_id;  // This is now the actual GameAction enum value
         uint8_t field;      // 0=dpad, 1=sticks, 2=btn0, 3=btn1
         uint8_t mask;       // Bit mask
     } JoystickMapping;
@@ -99,15 +104,16 @@ bool load_joystick_config(void)
         return false;  // File doesn't exist
     }
     
-    // Read number of mappings
+    // Read number of mappings (first byte of the file)
     uint8_t num_mappings = 0;
     if (read(fd, &num_mappings, 1) != 1) {
         close(fd);
         return false;
     }
     
-    // Read all mappings
-    JoystickMapping file_mappings[10];
+    // Read all mapping structures
+    // We expect 9 mappings based on the new tool (UP, DOWN, LEFT, RIGHT, A, B, X, Y, START)
+    JoystickMapping file_mappings[10]; 
     int bytes_to_read = num_mappings * sizeof(JoystickMapping);
     if (read(fd, file_mappings, bytes_to_read) != bytes_to_read) {
         close(fd);
@@ -116,33 +122,21 @@ bool load_joystick_config(void)
     
     close(fd);
     
-    // Initialize all to defaults first
+    // Initialize all to defaults first to ensure a clean state
     for (uint8_t player = 0; player < GAMEPAD_COUNT; player++) {
         reset_button_mappings(player);
     }
     
-    // Apply loaded mappings (assuming player 0 for now)
+    // Apply loaded mappings for player 0
     for (uint8_t i = 0; i < num_mappings; i++) {
         uint8_t action_id = file_mappings[i].action_id;
         
-        // Map action_id to GameAction enum
-        // gamepad_test actions: THRUST(0), REVERSE THRUST(1), ROTATE LEFT(2), 
-        //                       ROTATE RIGHT(3), FIRE(4), SUPER FIRE(5), PAUSE(6)
-        GameAction action;
-        switch (action_id) {
-            case 0: action = ACTION_THRUST; break;
-            case 1: action = ACTION_REVERSE_THRUST; break;
-            case 2: action = ACTION_ROTATE_LEFT; break;
-            case 3: action = ACTION_ROTATE_RIGHT; break;
-            case 4: action = ACTION_FIRE; break;
-            case 5: action = ACTION_SUPER_FIRE; break; 
-            case 6: action = ACTION_PAUSE; break;
-            default: continue;  // Skip invalid actions
+        // Safety: ensure the action_id from the file is a valid index for our array
+        // (Assuming ACTION_COUNT is the last element of your GameAction enum)
+        if (action_id < ACTION_COUNT) {
+            button_mappings[0][action_id].gamepad_button = file_mappings[i].field;
+            button_mappings[0][action_id].gamepad_mask = file_mappings[i].mask;
         }
-        
-        // Update the gamepad mapping for player 0
-        button_mappings[0][action].gamepad_button = file_mappings[i].field;
-        button_mappings[0][action].gamepad_mask = file_mappings[i].mask;
     }
     
     return true;

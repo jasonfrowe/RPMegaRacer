@@ -252,12 +252,13 @@ void debug_draw_waypoints(void) {
 
 
 
+
 int main(void) {
     puts("MegaRacer Engine Starting...");
     init_all_systems();
     reset_race();
 
-    uint8_t frame_counter = 0;
+
 
     while (1) {
         // 1. SYNC
@@ -291,7 +292,7 @@ int main(void) {
                 uint16_t player_frame_start_y = car.y;
 
                 update_player(&car);
-                // debug_draw_waypoints(); 
+                update_drs_system(&car); // DRS System update
 
                 update_player_progress(); // Updates car.total_progress
 
@@ -335,10 +336,22 @@ int main(void) {
                 }
 
                 // Check for Race End (5 Laps)
+                // --- CHECK FOR WINNER ---
                 if (car.laps >= 5) {
+                    race_winner = 0; // Player (Red car) won
                     current_state = STATE_FINISHED;
-                    update_engine_sound(0); // Stop engine sound
-                    state_timer = 300; // 5 seconds of "Race Finished" display
+                    state_timer = 300; // 5 seconds
+                    update_engine_sound(0);
+                } else {
+                    for (uint8_t i = 0; i < NUM_AI_CARS; i++) {
+                        if (ai_cars[i].car.laps >  5) {
+                            race_winner = i + 1; // AI won (1, 2, or 3)
+                            current_state = STATE_FINISHED;
+                            state_timer = 300;
+                            update_engine_sound(0);
+                            break;
+                        }
+                    }
                 }
             } break;
 
@@ -356,6 +369,7 @@ int main(void) {
 
         // 5. POST-PROCESS (Camera & UI)
         update_camera_and_ui();
+        hud_draw_drs(&car); 
 
         // 6. RENDER PREP
         int16_t screen_x = (car.x >> 6) + next_scroll_x;

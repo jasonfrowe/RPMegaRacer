@@ -42,3 +42,17 @@ target_sources(RPMegaRacer PRIVATE
     src/hud.c
     src/racelogic.c
 )
+
+# --- Gamepad Mapper Utility ---
+# This creates a separate binary called gamepad_mapper.rp6502
+add_executable(gamepad_mapper)
+
+# This uses the simple loader macro (no heavy assets needed)
+rp6502_executable(gamepad_mapper
+DATA file
+RESET file
+)
+
+target_sources(gamepad_mapper PRIVATE
+    src/gamepad_mapper.c
+)

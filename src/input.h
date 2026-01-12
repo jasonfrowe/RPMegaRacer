@@ -65,8 +65,9 @@ typedef enum {
     ACTION_ROTATE_RIGHT,
     ACTION_FIRE,
     ACTION_SUPER_FIRE,
-    ACTION_PAUSE,
+    ACTION_ALT_FIRE,
     ACTION_RESCUE,
+    ACTION_PAUSE,
     ACTION_COUNT  // Total number of actions
 } GameAction;
 

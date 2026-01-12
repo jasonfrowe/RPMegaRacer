@@ -15,6 +15,7 @@ extern void update_race_logic(void);
 extern void reset_race(void);
 extern void update_race_timer(void);
 extern void hud_draw_timer(void);
+extern bool is_player_leading(void);
 
 extern GameState current_state;
 extern uint16_t state_timer;
