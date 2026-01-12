@@ -1,59 +1,78 @@
 # RP Mega Racer
 
-A top-down arcade racing game for the RP6502 PicoComputer, inspired by Atari's classic Sprint Racer series.
+A high-performance, top-down arcade racing game for the **RP6502 PicoComputer**, heavily inspired by Atari's classic *Super Sprint* and the *Micro Machines* series.
 
 ## About
 
-RP Mega Racer brings the excitement of vintage arcade racing to the RP6502 PicoComputer. Race against the clock on challenging tracks filled with obstacles, tight turns, and hairpin curves. Navigate your race car with precision using keyboard controls while enjoying authentic OPL2 synthesized sound effects and music.
+**RP Mega Racer** pushes the limits of the RP6502, utilizing its unique multi-core architecture to deliver a smooth 60 FPS racing experience. Featuring hardware-accelerated affine (rotating) sprites, multi-plane scrolling backgrounds, and a unique hybrid audio engine, it brings 16-bit arcade vibes to the 8-bit 6502 world.
 
 ## Features
 
-- **Classic Top-Down Racing Action**: Experience the thrill of vintage arcade racing with smooth scrolling graphics
-- **Challenging Tracks**: Multiple race tracks with varying difficulty and layouts
-- **Realistic Physics**: Momentum-based driving that rewards skillful control
-- **OPL2 Audio**: Authentic retro sound effects and music powered by OPL2 synthesis
-- **Keyboard Controls**: Responsive steering and acceleration using standard keyboard input
-- **Score System**: Race against the clock and your best times
+- **Smooth 60 FPS Gameplay**: Optimized 10.6 fixed-point physics and axis-separated collision logic.
+- **Hardware-Accelerated Graphics**: High-resolution 320x240 display using Mode 4 Affine Sprites for smooth car rotation and Mode 2 Tilemaps for scrolling tracks.
+- **Hybrid Audio Engine**: 
+  - **OPL2 (FM Synthesis)**: Dedicated FPGA-based OPL2 card for high-quality background music and a dynamic, pitch-shifting engine growl on Channel 8.
+  - **RIA PSG**: Utilizing the onboard Programmable Sound Generator for "crunchy" arcade sound effects like tire screeches and wall impacts.
+- **DRS (Drag Reduction System)**: A tactical catch-up mechanic. If you aren't in the lead, your battery charges—activate it for a significant top-speed boost!
+- **Competitive AI**: 3 AI racers with "rubberbanding" logic that adapts to your skill level, ensuring every race is a nail-biter.
+- **Advanced Collision System**: Arcade-style "rubber" walls that bounce you back into the action, designed to prevent the "stuck-on-wall" frustrations of vintage racers.
 
 ## Controls
 
-- **Arrow Keys**: Steer your vehicle left/right, accelerate/brake
-- **ESC**: Pause/Menu
+The game supports both Keyboard and standard USB Gamepads. Use the included **Gamepad Mapper** to customize your layout.
+
+| Action | Keyboard | Gamepad (Default) |
+| :--- | :--- | :--- |
+| **Steer Left/Right** | Left / Right Arrows | D-Pad Left / Right |
+| **Accelerate (Gas)** | Z / Space | Button A |
+| **Reverse** | X | Button X |
+| **Activate DRS** | C / Left Shift | Button Y |
+| **Rescue (Teleport)** | R | Button B |
+| **Pause / Start** | ESC | Start |
+
+### DRS (Drag Reduction System)
+Watch the **DRS Meter** on your HUD. It charges automatically whenever you are behind the leader. Once the bar flashes **Cyan**, press the DRS button to activate a 2-second speed boost.
+
+### Rescue System
+If you get stuck behind a barrier or rammed into a corner by the AI, press the **Rescue** button to instantly teleport to the nearest safe waypoint on the track.
 
 ## Building the Game
 
-This project uses CMake and LLVM-MOS to build for the RP6502 PicoComputer.
+This project uses CMake and LLVM-MOS to target the 65C02 CPU.
 
 ### Requirements
 
-- [LLVM-MOS](https://llvm-mos.org/wiki/Welcome) toolchain installed
-- CMake 3.18 or newer
-- Python 3 with pyserial for uploading to hardware
-- [RP6502 PicoComputer](https://picocomputer.github.io)
+- [LLVM-MOS SDK](https://llvm-mos.org/)
+- [RP6502 SDK & Tools](https://github.com/picocomputer/rp6502-sdk)
+- CMake 3.18+
 
 ### Build Instructions
 
 ```bash
-mkdir -p build
+mkdir build
 cd build
 cmake ..
 make
 ```
 
-The compiled `.rp6502` file will be ready to upload to your PicoComputer.
+This will produce two main files:
+1. `RPMegaRacer.rp6502`: The main game.
+2. `gamepad_mapper.rp6502`: Use this to calibrate your controller.
 
-### Running on Hardware
+## Technical Details
 
-Use F5 in VSCode to build and upload directly to your RP6502 PicoComputer connected via USB.
-
-## Development
-
-The game is written in C using the LLVM-MOS compiler targeting the 65C02 CPU. Graphics are rendered to the RP6502's canvas system, and audio is generated using the onboard OPL2 synthesizer.
+- **CPU**: 65C02 (via LLVM-MOS)
+- **Resolution**: 320x240 pixels
+- **Colors**: 16-bit RGB555 for Sprites, 4-bit Indexed for Tiles
+- **Memory**: Intensive use of RIA XRAM for sprite attribute tables and tilemap data.
+- **Physics**: Sub-pixel movement using 10.6 fixed-point math to maintain accuracy while avoiding 32-bit overhead.
 
 ## Credits
 
-Inspired by Atari's Sprint series and classic top-down racing games of the 1970s-80s.
+- **Development**: Jason F. Rowe
+- **Hardware**: RP6502 PicoComputer by Picocomputer.
+- **Inspiration**: Atari Super Sprint, Micro Machines (NES).
 
 ## License
 
-See LICENSE file for details.
+This project is licensed under the GNU General Public License - see the LICENSE file for details.
