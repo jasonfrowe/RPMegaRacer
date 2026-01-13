@@ -5,3 +5,4 @@ CMakeUserPresets.json
 Sprites
 .DS_Store
 .venv
+/releases

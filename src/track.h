@@ -14,6 +14,9 @@ extern uint8_t tile_properties[256];
 extern uint8_t tile_collision_masks[256][8];
 extern void load_track(int track_id);
 extern void load_track_data(const char* track_dir);
+
+#define NUM_TRACKS 2 
+
 extern void load_waypoints(const char* filename);
 extern uint8_t get_terrain_at(int16_t x, int16_t y);
 

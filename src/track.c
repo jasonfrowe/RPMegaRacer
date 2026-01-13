@@ -115,7 +115,15 @@ void load_waypoints(const char* filename) {
     close(fd);
 }
 
+// Track the currently loaded track to avoid redundant loads
+static int last_loaded_track_id = -1;
+
 void load_track(int track_id) {
+    if (track_id == last_loaded_track_id) {
+        printf("Track %d already loaded, skipping.\n", track_id);
+        return;
+    }
+
     // Defaults (in case load fails or partial load)
     memset(tile_collision_masks, 0, sizeof(tile_collision_masks));
     for (int i = 0; i < 256; i++) tile_properties[i] = TERRAIN_WALL;
@@ -130,6 +138,8 @@ void load_track(int track_id) {
     char waypoints_file[64];
     sprintf(waypoints_file, "%s/waypoints.bin", track_dir);
     load_waypoints(waypoints_file);
+
+    last_loaded_track_id = track_id;
 }
 
 uint8_t get_terrain_at(int16_t x, int16_t y) {

@@ -115,9 +115,9 @@ void update_finished_screen(void) {
             // Progression Logic
             if (race_winner == 0) {
                 current_track_id++; // Next track!
-                // Cap? Eventually "game beaten?" For now assuming infinite/looping or just let file load fail safely (it defaults to track 1 if fail?)
-                // Actually load_track defaults to track 1 if file fails? No, it defaults to clearing buffers.
-                // Assuming valid track IDs exist.
+                if (current_track_id > NUM_TRACKS) {
+                    current_track_id = 1; // Loop back to Track 1
+                }
             } else {
                 current_track_id = 1; // Back to start on failure
             }
