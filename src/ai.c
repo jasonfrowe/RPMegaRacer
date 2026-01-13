@@ -160,26 +160,18 @@ void update_ai(void) {
             }
             
             ai->target_angle = (192 - atan2_8(dy, dx)) & 0xFF;
-            // uint8_t angle_diff = abs((int8_t)(ai->target_angle - ai->car.angle));
-            // ai->last_thrust_shift = (angle_diff > 32) ? AI_REDUCED_THRUST_SHIFT : AI_MAX_THRUST_SHIFT;
-            // DYNAMIC SPEED CONTROL
-            // Start with the speed set by rubberbanding
-            // uint8_t angle_diff = abs((int8_t)(ai->target_angle - ai->car.angle));
-
-            // if (angle_diff > 32) {
-            //     // Sharp turn: Slow down by ONE tier
-            //     ai->last_thrust_shift = ai->base_speed_shift + 1;
-            // } else {
-            //     ai->last_thrust_shift = ai->base_speed_shift;
-            // }
 
             // Inside update_ai -> brain turn (if i == ai_brain_turn)
             uint8_t angle_diff = abs((int8_t)(ai->target_angle - ai->car.angle));
 
-            if (angle_diff > 32) {
-                // If turning, go one tier slower than the rubberband says
+            if (angle_diff > 48) {
+                // Sharp Turn: Slow down significantly (2 tiers)
+                ai->last_thrust_shift = ai->base_speed_shift + 2;
+            } else if (angle_diff > 24) {
+                // Moderate Turn: Slow down slightly (1 tier)
                 ai->last_thrust_shift = ai->base_speed_shift + 1;
             } else {
+                // Straight: Full speed
                 ai->last_thrust_shift = ai->base_speed_shift;
             }
 
