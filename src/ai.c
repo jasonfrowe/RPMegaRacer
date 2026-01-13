@@ -65,7 +65,7 @@ void init_ai(void) {
         ai_cars[i].car.vel_x = 0;
         ai_cars[i].car.vel_y = 0;
         ai_cars[i].car.angle = 64;  
-        ai_cars[i].current_waypoint = 1;  
+        ai_cars[i].car.current_waypoint = 1;  
         ai_cars[i].sprite_index = i + 1;  
         ai_cars[i].last_recorded_x = 245;  
         ai_cars[i].last_recorded_y = start_positions[i];
@@ -129,7 +129,7 @@ void update_ai(void) {
                     
                     // --- RESCUE TELEPORT ---
                     // Find the waypoint they just came from
-                    uint8_t prev_wp = (ai->current_waypoint == 0) ? (g_num_active_waypoints - 1) : (ai->current_waypoint - 1);
+                    uint8_t prev_wp = (ai->car.current_waypoint == 0) ? (g_num_active_waypoints - 1) : (ai->car.current_waypoint - 1);
                     
                     // Snap to the center of the previous waypoint
                     ai->car.x = (uint16_t)waypoints[prev_wp].x << 6;
@@ -147,15 +147,15 @@ void update_ai(void) {
             }
 
             // --- WAYPOINT UPDATING ---
-            int16_t dx = waypoints[ai->current_waypoint].x + ai->offset_x - car_px_x;
-            int16_t dy = waypoints[ai->current_waypoint].y + ai->offset_y - car_px_y;
+            int16_t dx = waypoints[ai->car.current_waypoint].x + ai->offset_x - car_px_x;
+            int16_t dy = waypoints[ai->car.current_waypoint].y + ai->offset_y - car_px_y;
             
             // Manhattan distance for VSync speed
             if ((abs(dx) + abs(dy)) < 50) {
                 ai->car.progress_steps++; // This never resets!
-                ai->current_waypoint++;
-                if (ai->current_waypoint >= g_num_active_waypoints) {
-                    ai->current_waypoint = 0;
+                ai->car.current_waypoint++;
+                if (ai->car.current_waypoint >= g_num_active_waypoints) {
+                    ai->car.current_waypoint = 0;
                 }
             }
             
@@ -305,7 +305,7 @@ void draw_ai_cars(int16_t scroll_x, int16_t scroll_y) {
 
 
 void update_ai_rubberbanding(AICar *ai) {
-    static int16_t last_diff[3] = {0,0,0};
+    // static int16_t last_diff[3] = {0,0,0};
     
     // Calculate difference using the monotonic counters
     int16_t diff = (int16_t)car.progress_steps - (int16_t)ai->car.progress_steps;
@@ -322,11 +322,11 @@ void update_ai_rubberbanding(AICar *ai) {
     }
 
     // Diagnostic logging (No more lap glitches!)
-    uint8_t id = ai->sprite_index - 1;
-    if (diff != last_diff[id]) {
-        printf("Car %d: Diff %d | Shift %d | P_Steps: %d | AI_Steps: %d\n", 
-               id, diff, ai->base_speed_shift, car.progress_steps, ai->car.progress_steps);
-        last_diff[id] = diff;
-    }
+    // uint8_t id = ai->sprite_index - 1;
+    // if (diff != last_diff[id]) {
+    //     printf("Car %d: Diff %d | Shift %d | P_Steps: %d | AI_Steps: %d\n", 
+    //            id, diff, ai->base_speed_shift, car.progress_steps, ai->car.progress_steps);
+    //     last_diff[id] = diff;
+    // }
 }
 

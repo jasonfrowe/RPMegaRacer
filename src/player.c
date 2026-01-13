@@ -359,44 +359,65 @@ void update_camera(Car *p) {
 }
 
 void update_lap_logic(Car *p, bool is_player) {
-    // 1. Convert 10.6 world position to Tile Coordinates (8x8 tiles)
-    // We check the center of the car (+8 pixels)
-    uint8_t tx = ((p->x >> 6) + 8) >> 3;
-    uint8_t ty = ((p->y >> 6) + 8) >> 3;
+    uint16_t total = g_num_active_waypoints;
+    if (total == 0) return;
 
-    // 2. State Machine for Checkpoints
+    // State Machine based on Waypoint Progress
     switch (p->next_checkpoint) {
-        case 1: // CP1 gate: tx [4..10], ty 30
-            if (ty == 30 && tx >= 4 && tx <= 10) {
-                // printf("CP1 Triggered at tx=%d, ty=%d\n", tx, ty);
+        case 1: // Looking for CP1 (25% progress)
+            if (p->current_waypoint >= (total / 4) && p->current_waypoint > 0) {
                 p->next_checkpoint = 2;
             }
             break;
 
-        case 2: // CP2 gate: tx 31, ty [36..42]
-            if (tx == 31 && ty >= 36 && ty <= 42) {
-                // printf("CP2 Triggered at tx=%d, ty=%d\n", tx, ty);
+        case 2: // Looking for CP2 (50% progress)
+            if (p->current_waypoint >= (total / 2)) {
                 p->next_checkpoint = 3;
             }
             break;
 
-        case 3: // CP3 gate: tx [52..58], ty 17
-            if (ty == 17 && tx >= 52 && tx <= 58) {
-                // printf("CP3 Triggered at tx=%d, ty=%d\n", tx, ty);
-                p->next_checkpoint = 0; // Next is the Finish Line
+        case 3: // Looking for CP3 -> Finish Ready (75% Progress)
+            if (p->current_waypoint >= (total * 3 / 4)) {
+                 p->next_checkpoint = 0; // Armed for Finish
             }
             break;
 
-        case 0: // Finish Line gate: tx 31, ty [4..10]
-            if (tx == 31 && ty >= 4 && ty <= 10) {
-                p->laps++;
-                p->next_checkpoint = 1; // Loop back to CP1
-                
-                // if (is_player) {
-                //     // Visual feedback: Print to Console Plane (free VSync-wise)
-                //     printf("\x1b[1;2H LAP: %d/3 ", p->laps + 1);
-                //     // play_psg_lap_ding();
-                // }
+        case 0: // Finish Line (Armed)
+            {
+                // SUPERSAMPLING: Check multiple points along velocity vector
+                bool crossed_line = false;
+                int16_t cur_x = p->x;
+                int16_t cur_y = p->y;
+                int16_t vel_x = p->vel_x;
+                int16_t vel_y = p->vel_y;
+
+                for (int i = 0; i <= 4; i++) {
+                     int16_t sample_x = cur_x - ((vel_x * i) >> 2);
+                     int16_t sample_y = cur_y - ((vel_y * i) >> 2);
+                     uint16_t cx = (sample_x >> 6) + 8;
+                     uint16_t cy = (sample_y >> 6) + 8;
+                     
+                     if (get_terrain_at(cx, cy) == TERRAIN_FINISH) {
+                         crossed_line = true;
+                         break;
+                     }
+                }
+
+                // ALTERNATIVE TRIGGER: Removed by request.
+                // We rely 100% on Supersampled Tile Detection (TERRAIN_FINISH)
+                // for both Player and AI.
+
+                if (crossed_line) {
+                    p->laps++;
+                    p->next_checkpoint = 1; // Loop back to CP1
+                    
+                    // Reset Waypoint to 1
+                    p->current_waypoint = 1; 
+
+                    // DEBUG: Print Lap Completion with Identity
+                    const char* who = (is_player) ? "Player" : "AI";
+                    printf("%s Completed Lap %d\n", who, p->laps); 
+                }
             }
             break;
     }

@@ -145,6 +145,12 @@ uint8_t get_terrain_at(int16_t x, int16_t y) {
     uint16_t map_index = ty * 64 + tx;
     uint8_t tile_id = world_map[map_index];
 
+    // FIX: Explicitly report Finish Line tiles regardless of properties.bin
+    // Tiles 243-248 are defined as FINISH_LINE_TILES in the generator.
+    if (tile_id >= 243 && tile_id <= 248) {
+        return TERRAIN_FINISH;
+    }
+
     // 4. Check pixel-level collision mask
     uint8_t row_mask = tile_collision_masks[tile_id][py];
     if (row_mask != 0) {
