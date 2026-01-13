@@ -7,7 +7,9 @@
 #include "input.h"
 #include "racelogic.h"
 #include "player.h"
-
+#include "racelogic.h"
+#include "player.h"
+#include "track.h"
 char message[MESSAGE_LENGTH + 1]; // +1 for null terminator
 
 void hud_print(uint8_t x, uint8_t y, const char* str, uint8_t fg, uint8_t bg) {
@@ -110,6 +112,16 @@ void update_finished_screen(void) {
         }
 
         if (is_action_pressed(0, ACTION_PAUSE)) { 
+            // Progression Logic
+            if (race_winner == 0) {
+                current_track_id++; // Next track!
+                // Cap? Eventually "game beaten?" For now assuming infinite/looping or just let file load fail safely (it defaults to track 1 if fail?)
+                // Actually load_track defaults to track 1 if file fails? No, it defaults to clearing buffers.
+                // Assuming valid track IDs exist.
+            } else {
+                current_track_id = 1; // Back to start on failure
+            }
+            
             reset_race(); 
         }
     }

@@ -18,5 +18,6 @@ extern void load_waypoints(const char* filename);
 extern uint8_t get_terrain_at(int16_t x, int16_t y);
 
 extern uint16_t g_num_active_waypoints;
+extern int current_track_id; // Default 1
 
 #endif // TRACK_H

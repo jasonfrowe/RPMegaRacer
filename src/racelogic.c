@@ -6,11 +6,9 @@
 #include "hud.h"
 #include "player.h"
 #include "ai.h"
+#include "track.h" // Added for load_track
 
 
-
-
-// Race time tracking    
 uint8_t race_minutes = 0;
 uint8_t race_seconds = 0;
 uint8_t race_frames = 0; // Ticks from 0-59
@@ -34,6 +32,7 @@ void update_race_logic(void) {
 }
 
 void reset_race(void) {
+    load_track(current_track_id);
     init_player(); // Resets car x,y, angle, laps, checkpoints
     init_ai();     // Resets all 3 AI cars to grid
     

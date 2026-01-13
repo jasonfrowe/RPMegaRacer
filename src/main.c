@@ -178,7 +178,7 @@ void init_all_systems(void) {
     init_player();
     init_ai();
     init_graphics();
-    load_track(2); // Load track 2 for testing
+    load_track(current_track_id); 
     init_input_system();
 
     // Audio Setup

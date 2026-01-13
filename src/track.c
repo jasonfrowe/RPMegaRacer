@@ -87,6 +87,7 @@ void load_track_data(const char* track_dir) {
 #include "ai.h"
 
 uint16_t g_num_active_waypoints = NUM_WAYPOINTS;
+int current_track_id = 1;
 
 void load_waypoints(const char* filename) {
     int fd = open(filename, O_RDONLY);
