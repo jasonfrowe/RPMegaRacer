@@ -61,7 +61,8 @@ void resolve_player_ai_collision(Car *p, AICar *ai) {
         int16_t ai_push_x = -(push_x * AI_PUSH_FORCE_HVY); // Opposite direction
         int16_t ai_push_y = -(push_y * AI_PUSH_FORCE_HVY);
 
-        if (get_terrain_at(((c2->x + ai_push_x) >> 6) + 8, ((c2->y + ai_push_y) >> 6) + 8) != TERRAIN_WALL) {
+        // Check if the destination is safe using the full hitbox check (from player.h)
+        if (!is_colliding_fast(((c2->x + ai_push_x) >> 6), ((c2->y + ai_push_y) >> 6))) {
             c2->x += ai_push_x;
             c2->y += ai_push_y;
         }

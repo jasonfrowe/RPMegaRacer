@@ -188,10 +188,29 @@ void update_player(Car *p) {
     // --- 2. THE ROTATION EJECTOR (No Stun) ---
     // If rotating pushed a corner into a wall, shove out immediately.
     // This prevents "getting stuck" while turning near a wall.
-    if (is_colliding_fast(p->x >> 6, p->y >> 6)) {
-        // Shove backward relative to current heading
-        p->x += (int16_t)s >> 5; 
-        p->y += (int16_t)c >> 5;
+    int16_t test_x = p->x >> 6;
+    int16_t test_y = p->y >> 6;
+
+    if (is_colliding_fast(test_x, test_y)) {
+        // Smart Ejector: Try Backward first, then Forward
+        // s/c are ~2 pixels magnitude in 10.6 (127 ~= 2 * 64)
+        
+        int16_t back_x = p->x + (int16_t)s; 
+        int16_t back_y = p->y + (int16_t)c;
+        
+        if (!is_colliding_fast(back_x >> 6, back_y >> 6)) {
+            p->x = back_x;
+            p->y = back_y;
+        } else {
+            // Backend blocked? Try pushing blocked nose out (Forward)
+            int16_t fwd_x = p->x - (int16_t)s;
+            int16_t fwd_y = p->y - (int16_t)c;
+            
+            if (!is_colliding_fast(fwd_x >> 6, fwd_y >> 6)) {
+                p->x = fwd_x;
+                p->y = fwd_y;
+            }
+        }
     }
 
     // --- 3. THRUST & FRICTION ---

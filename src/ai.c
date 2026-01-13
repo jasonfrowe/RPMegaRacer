@@ -13,8 +13,8 @@
 #define AI_MAX_THRUST_SHIFT 3      
 #define AI_REDUCED_THRUST_SHIFT 4  
 
-#define BOUNCE_IMPULSE 0x080  
-#define PUSH_OUT_10_6  0x018  // ~0.4 pixels in 10.6 (0.4 * 64)
+#define BOUNCE_IMPULSE 0x0C0  
+#define PUSH_OUT_10_6  0x060  // Increased to match player (1.5 pixels)
 #define REBOUND_STUN   4       
 
 // Shared optimization: 4-corner check using 16-bit pixels
@@ -189,6 +189,36 @@ void update_ai(void) {
             if (diff != 0) {
                 if (diff < 128) ai->car.angle += AI_TURN_SPEED;
                 else ai->car.angle -= AI_TURN_SPEED;
+
+                // --- ROTATION EJECTOR ---
+                // If rotating pushed us into a wall, shove out
+                int8_t s = SIN_LUT[ai->car.angle];
+                int8_t c = SIN_LUT[(ai->car.angle + 64) & 0xFF];
+
+                int16_t test_x = ai->car.x >> 6;
+                int16_t test_y = ai->car.y >> 6;
+
+                if (is_colliding_ai(test_x, test_y)) {
+                    // Smart Ejector: Try Backward first, then Forward
+                    // s/c are ~2 pixels magnitude (127/64)
+                    
+                    int16_t back_x = ai->car.x + (int16_t)s;
+                    int16_t back_y = ai->car.y + (int16_t)c;
+                    
+                    if (!is_colliding_ai(back_x >> 6, back_y >> 6)) {
+                        ai->car.x = back_x;
+                        ai->car.y = back_y;
+                    } else {
+                        // Backend blocked? Try pushing blocked nose out (Forward)
+                        int16_t fwd_x = ai->car.x - (int16_t)s;
+                        int16_t fwd_y = ai->car.y - (int16_t)c;
+                        
+                        if (!is_colliding_ai(fwd_x >> 6, fwd_y >> 6)) {
+                            ai->car.x = fwd_x;
+                            ai->car.y = fwd_y;
+                        }
+                    }
+                }
             }
         }
 

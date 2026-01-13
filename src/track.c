@@ -114,14 +114,21 @@ void load_waypoints(const char* filename) {
     close(fd);
 }
 
-void init_track_physics(void) {
+void load_track(int track_id) {
     // Defaults (in case load fails or partial load)
     memset(tile_collision_masks, 0, sizeof(tile_collision_masks));
     for (int i = 0; i < 256; i++) tile_properties[i] = TERRAIN_WALL;
 
-    // Load Default Track
-    // TODO: Pass this in as an argument in the future
-    load_track_data("tracks/track01");
+    char track_dir[32];
+    sprintf(track_dir, "tracks/track%02d", track_id);
+    
+    // Load Map, Tiles, Collision, Properties
+    load_track_data(track_dir);
+
+    // Load Waypoints
+    char waypoints_file[64];
+    sprintf(waypoints_file, "%s/waypoints.bin", track_dir);
+    load_waypoints(waypoints_file);
 }
 
 uint8_t get_terrain_at(int16_t x, int16_t y) {

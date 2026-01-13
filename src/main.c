@@ -178,8 +178,7 @@ void init_all_systems(void) {
     init_player();
     init_ai();
     init_graphics();
-    init_track_physics(); // Loads track01 map/collision/props
-    load_waypoints("tracks/track01/waypoints.bin");
+    load_track(2); // Load track 2 for testing
     init_input_system();
 
     // Audio Setup
