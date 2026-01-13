@@ -21,7 +21,7 @@
 // Tile data configuration
 #define TRACK_MAP_ADDR          0x0850U // Address for track map data in XRAM
 #define TRACK_DATA              0x1450U // Address for track tile data in XRAM (Re-used for tiles.bin)
-#define TRACK_DATA_SIZE         0x1F20U // Size of track tile data (7968 bytes)
+#define TRACK_DATA_SIZE         0x2000U // Size of track tile data (8192 bytes = 256 tiles * 32 bytes)
 #define TRACK_DATA_END          (TRACK_DATA + TRACK_DATA_SIZE)
 
 // 5. Keyboard, Gamepad and Sound

@@ -25,6 +25,9 @@ def process_track(bin_file, output_dir):
     num_tiles = len(tile_data) // 32
     print(f"Processing {num_tiles} tiles from {bin_file}...")
 
+    if num_tiles > 256:
+        print(f"WARNING: Tile count ({num_tiles}) exceeds 256! Tiles > 255 cannot be indexed in the map.")
+
     collision_masks = bytearray()
     tile_properties = bytearray()
     
