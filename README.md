@@ -10,12 +10,28 @@ A high-performance, top-down arcade racing game for the [**RP6502 PicoComputer**
 
 - **Smooth 60 FPS Gameplay**: Optimized 10.6 fixed-point physics and axis-separated collision logic.
 - **Hardware-Accelerated Graphics**: High-resolution 320x240 display using Mode 4 Affine Sprites for smooth car rotation and Mode 2 Tilemaps for scrolling tracks.
+- **Multi-Track Support**: Dynamic track loading allows for an unlimited number of courses.
+- **Track Progression**: Win a 5-Lap race to advance to the next track. Lose, and you go back to the start!
 - **Hybrid Audio Engine**: 
   - **OPL2 (FM Synthesis)**: Dedicated FPGA-based OPL2 card for high-quality background music and a dynamic, pitch-shifting engine growl on Channel 8.
   - **RIA PSG**: Utilizing the onboard Programmable Sound Generator for "crunchy" arcade sound effects like tire screeches and wall impacts.
 - **DRS (Drag Reduction System)**: A tactical catch-up mechanic. If you aren't in the lead, your battery charges—activate it for a significant top-speed boost!
 - **Competitive AI**: 3 AI racers with "rubberbanding" logic that adapts to your skill level, ensuring every race is a nail-biter.
 - **Advanced Collision System**: Arcade-style "rubber" walls that bounce you back into the action, designed to prevent the "stuck-on-wall" frustrations of vintage racers.
+
+## Adding New Tracks
+
+The game is designed to be easily extensible. To add a new track:
+
+1.  **Create a Folder**: Create a new directory in `tracks/` named sequentially (e.g., `track03`).
+2.  **Add Assets**: The folder must contain the following binary files (generated via the tools in `tools/`):
+    - `map.bin` (Tilemap indices)
+    - `tiles.bin` (Tile pixel data)
+    - `collision.bin` (Collision masks)
+    - `properties.bin` (Terrain properties)
+    - `waypoints.bin` (AI pathfinding nodes)
+3.  **Update Config**: Open `src/track.h` and increase the `NUM_TRACKS` constant to reflect the new total.
+4.  **Build**: Recompile the game. The logic will automatically include the new track in the rotation.
 
 ## Controls
 
@@ -57,6 +73,8 @@ make
 This will produce two main files:
 1. `RPMegaRacer.rp6502`: The main game.
 2. `gamepad_mapper.rp6502`: Use this to calibrate your controller.
+
+**Note**: Ensure the `tracks/` directory is copied to your RP6502 storage so the game can load the level data.
 
 ## Technical Details
 
