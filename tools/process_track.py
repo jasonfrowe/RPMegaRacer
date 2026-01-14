@@ -17,7 +17,8 @@ def process_track(bin_file, output_dir):
     PASSABLE_COLORS = ROAD_COLORS | TERRAIN_COLORS  # All passable colors
     
     # Special tiles that are always 100% road regardless of pixel colors
-    FINISH_LINE_TILES = set(range(243, 249))  # Tiles 243-248
+    # FINISH_LINE_TILES = set(range(243, 249))  # Tiles 243-248 (Classic)
+    FINISH_LINE_TILES = {14, 15, 44, 45}        # Track 03 One-off
     
     with open(bin_file, 'rb') as f:
         tile_data = f.read()

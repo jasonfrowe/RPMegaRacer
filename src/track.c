@@ -157,9 +157,15 @@ uint8_t get_terrain_at(int16_t x, int16_t y) {
     uint8_t tile_id = world_map[map_index];
 
     // FIX: Explicitly report Finish Line tiles regardless of properties.bin
-    // Tiles 243-248 are defined as FINISH_LINE_TILES in the generator.
-    if (tile_id >= 243 && tile_id <= 248) {
-        return TERRAIN_FINISH;
+    if (current_track_id == 3) {
+         if (tile_id == 14 || tile_id == 15 || tile_id == 44 || tile_id == 45) {
+            return TERRAIN_FINISH;
+        }
+    } else {
+        // Tiles 243-248 are defined as FINISH_LINE_TILES in the generator for Tracks 1 & 2
+        if (tile_id >= 243 && tile_id <= 248) {
+            return TERRAIN_FINISH;
+        }
     }
 
     // 4. Check pixel-level collision mask

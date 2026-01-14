@@ -60,6 +60,7 @@ This project uses CMake and LLVM-MOS to target the 65C02 CPU.
 
 - [LLVM-MOS SDK](https://llvm-mos.org/)
 - CMake 3.18+
+- Python 3 (with virtual environment in `.venv`)
 
 ### Build Instructions
 
