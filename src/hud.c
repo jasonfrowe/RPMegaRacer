@@ -62,21 +62,34 @@ void update_countdown_display(uint16_t delay) {
 }
 
 void update_title_screen(void) {
-    // Flash "PRESS FIRE" using vsync bits
-    if (RIA.vsync & 0x20) {
-        hud_print(10, 15, " PRESS FIRE TO START ", 15, 0);
-    } else {
-        hud_print(10, 15, "                     ", 0, 0);
-    }
-    
-    hud_print(7, 12, " *** MEGA RACER RP6502 *** ", 11, 0);
+    // A smooth hue cycle path through the 216-color ANSI cube (6x6x6).
+    // This avoids the 'flashing' from the raw index sweep.
+    static const uint8_t rainbow_table[] = {
+        196, 202, 208, 214, 220, 226, // Red to Yellow
+        190, 154, 118, 82, 46,        // Yellow to Green
+        47, 48, 49, 50, 51,           // Green to Cyan
+        45, 39, 33, 27, 21,           // Cyan to Blue
+        57, 93, 129, 165, 201,        // Blue to Magenta
+        200, 199, 198, 197            // Magenta to Red
+    };
 
+    // Cycle through the 30-step table (slower: every 4 frames)
+    uint8_t color = rainbow_table[(RIA.vsync >> 2) % 30];
+    hud_print(10, 18, " PRESS FIRE TO START ", color, 0);
+    
     if (is_action_pressed(0, ACTION_FIRE)) {
         // Clear title text
-        hud_print(10, 15, "                     ", 0, 0);
-        hud_print(7, 12 ,  "                           ", 0, 0);
+        hud_print(10, 18, "                     ", 0, 0);
         current_state = STATE_COUNTDOWN;
         state_timer = COUNTDOWN_TOTAL_TIME; 
+
+        RIA.addr0 = TITLE_MAP_START;
+        RIA.step0 = 1;
+        // Remove title screen
+        for (int i = 0; i < TITLE_NUMBER_OF_TILES; i++) {
+            RIA.rw0 = 0;
+        }
+
     }
 }
 

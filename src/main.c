@@ -11,6 +11,8 @@
 #include "collision.h"
 #include "hud.h"
 #include "racelogic.h"
+#include "racelogic.h"
+#include "layer2.h"
 #include <stdlib.h>
 
 unsigned REDRACER_CONFIG;    // RedRacer Sprite Configuration
@@ -152,16 +154,14 @@ static void init_graphics(void)
         RIA.rw0 = HUD_COL_BG;
     }
 
-    // Track map offsets
+    // Title map offsets
     TITLE_MAP_START = TITLE_MAP_ADDR;
     TITLE_MAP_END   = (TITLE_MAP_START + TITLE_MAP_SIZE);
-    
-    // NOTE: world_map is now loaded by load_track_data() in init_all_systems()
 
     TITLE_CONFIG = TITLE_DATA_END;
 
-    xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, x_wrap, false);
-    xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, y_wrap, false);
+    xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, x_wrap, true);
+    xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, y_wrap, true);
     xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, x_pos_px, 0);
     xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, y_pos_px, 0);
     xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, width_tiles, TITLE_MAP_WIDTH_TILES);
@@ -170,7 +170,7 @@ static void init_graphics(void)
     xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, xram_palette_ptr, PALETTE_ADDR);
     xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, xram_tile_ptr, TITLE_DATA);
 
-    xregn(1, 0, 1, 4, 2, 0x02, TITLE_CONFIG, 2); // Titles on 2  
+    xregn(1, 0, 1, 4, 2, 0x02, TITLE_CONFIG, 2); // Titles on 2   
 
 
     printf("Redracer Data at 0x%04X\n", REDRACER_DATA);
@@ -190,6 +190,7 @@ static void init_graphics(void)
 uint8_t vsync_last = 0;
 uint16_t timer_accumulator = 0;
 bool music_enabled = true;
+uint8_t last_video_state = 0xFF; // Initialize to a state that won't match immediately
 
 int16_t next_scroll_x = 0;
 int16_t next_scroll_y = 0;
@@ -287,6 +288,15 @@ int main(void) {
         // 2. HARDWARE UPDATE (Immediate)
         xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, x_pos_px, next_scroll_x);
         xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, y_pos_px, next_scroll_y);
+
+        // Dynamic plane loading based on game state
+        if (current_state != last_video_state) {
+            if (current_state == STATE_TITLE) {
+                // Load Title Assets from Filesystem
+                load_plane2();
+            } 
+            last_video_state = current_state;
+        }
 
         // 3. AUDIO
         process_audio_frame();

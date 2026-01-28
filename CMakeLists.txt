@@ -20,8 +20,8 @@ endif()
 
 add_executable(RPMegaRacer)
 rp6502_asset(RPMegaRacer 0x10000 images/RedRacer.bin)
-rp6502_asset(RPMegaRacer 0x14284 images/title_map.bin)
-rp6502_asset(RPMegaRacer 0x14734 images/title_tiles.bin)
+# rp6502_asset(RPMegaRacer 0x14284 images/title_map.bin) -- Removed (Loaded dynamically via layer2.c)
+# rp6502_asset(RPMegaRacer 0x14E84 images/title_tiles.bin) -- Removed (Loaded dynamically via layer2.c)
 
 rp6502_executable(RPMegaRacer
     RedRacer.bin.rp6502
@@ -39,6 +39,7 @@ target_sources(RPMegaRacer PRIVATE
     src/instruments.c
     src/track.c
     src/sound.c
+    src/layer2.c
     src/ai.c
     src/collision.c
     src/hud.c
