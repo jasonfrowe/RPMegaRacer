@@ -75,7 +75,7 @@ This will produce two main files:
 1. `RPMegaRacer.rp6502`: The main game.
 2. `gamepad_mapper.rp6502`: Use this to calibrate your controller.
 
-**Note**: Ensure the `tracks/` directory is copied to your RP6502 storage so the game can load the level data.
+**Note**: Ensure the `tracks/` and `music/` directories are copied to your RP6502 storage so the game can load the level data and audio.
 
 ## Technical Details
 

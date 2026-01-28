@@ -20,6 +20,9 @@ unsigned TRACK_CONFIG;       // Track tilemap configuration
 unsigned TEXT_CONFIG;        // Text overlay configuration
 unsigned text_message_addr;  // Start address for text messages in XRAM
 unsigned text_storage_end;   // End address for text messages in XRAM
+unsigned TITLE_MAP_START;
+unsigned TITLE_MAP_END;
+unsigned TITLE_CONFIG;
 
 static void init_graphics(void)
 {
@@ -29,7 +32,7 @@ static void init_graphics(void)
 
     // Palette for the tile (16 colors)
     uint16_t tile_palette[16] = {
-        0x0020,  // Index 0 (Transparent)
+        0x0000,  // Index 0 (Transparent)
         0x0020,
         0x41A7,
         0x1AE0,
@@ -117,7 +120,7 @@ static void init_graphics(void)
     xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, xram_palette_ptr, PALETTE_ADDR);
     xram0_struct_set(TRACK_CONFIG, vga_mode2_config_t, xram_tile_ptr, TRACK_DATA);
 
-    xregn(1, 0, 1, 4, 2, 0x02, TRACK_CONFIG, 0); // Enable sprited tilemap
+    xregn(1, 0, 1, 4, 2, 0x02, TRACK_CONFIG, 0); // Enable sprited tilemap 
 
     TEXT_CONFIG = TRACK_CONFIG + sizeof(vga_mode2_config_t);
     text_message_addr = TEXT_CONFIG + sizeof(vga_mode1_config_t);
@@ -135,7 +138,7 @@ static void init_graphics(void)
     xram0_struct_set(TEXT_CONFIG, vga_mode1_config_t, xram_font_ptr, 0xFFFF);
 
     // 4 parameters: text mode, 8-bit, config, plane
-    xregn(1, 0, 1, 4, 1, 3, TEXT_CONFIG, 2);
+    xregn(1, 0, 1, 4, 1, 3, TEXT_CONFIG, 1);
 
     // Clear message buffer to spaces
     for (int i = 0; i < MESSAGE_LENGTH; ++i) message[i] = ' ';
@@ -149,12 +152,34 @@ static void init_graphics(void)
         RIA.rw0 = HUD_COL_BG;
     }
 
+    // Track map offsets
+    TITLE_MAP_START = TITLE_MAP_ADDR;
+    TITLE_MAP_END   = (TITLE_MAP_START + TITLE_MAP_SIZE);
+    
+    // NOTE: world_map is now loaded by load_track_data() in init_all_systems()
+
+    TITLE_CONFIG = TITLE_DATA_END;
+
+    xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, x_wrap, false);
+    xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, y_wrap, false);
+    xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, x_pos_px, 0);
+    xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, y_pos_px, 0);
+    xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, width_tiles, TITLE_MAP_WIDTH_TILES);
+    xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, height_tiles, TITLE_MAP_HEIGHT_TILES);
+    xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, xram_data_ptr, TITLE_MAP_START);
+    xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, xram_palette_ptr, PALETTE_ADDR);
+    xram0_struct_set(TITLE_CONFIG, vga_mode2_config_t, xram_tile_ptr, TITLE_DATA);
+
+    xregn(1, 0, 1, 4, 2, 0x02, TITLE_CONFIG, 2); // Titles on 2  
+
 
     printf("Redracer Data at 0x%04X\n", REDRACER_DATA);
     printf("Redracer Config at 0x%04X\n", REDRACER_CONFIG);
     printf("Track Config at 0x%04X\n", TRACK_CONFIG);
     printf("Text Config at 0x%04X\n", TEXT_CONFIG);
     printf("Text Messages at 0x%04X - 0x%04X\n", text_message_addr, text_storage_end);
+    printf("Title Map at 0x%04X - 0x%04X\n", TITLE_MAP_START, TITLE_MAP_END);
+    printf("Title Config at 0x%04X\n", TITLE_CONFIG);
     printf("OPL Config = 0x%X\n", OPL_ADDR);
     printf("GAME_PAD_CONFIG=0x%X\n", GAMEPAD_INPUT);
     printf("KEYBOARD_CONFIG=0x%X\n", KEYBOARD_INPUT);

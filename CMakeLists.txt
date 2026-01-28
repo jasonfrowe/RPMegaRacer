@@ -20,8 +20,13 @@ endif()
 
 add_executable(RPMegaRacer)
 rp6502_asset(RPMegaRacer 0x10000 images/RedRacer.bin)
+rp6502_asset(RPMegaRacer 0x14284 images/title_map.bin)
+rp6502_asset(RPMegaRacer 0x14734 images/title_tiles.bin)
+
 rp6502_executable(RPMegaRacer
     RedRacer.bin.rp6502
+    title_map.bin.rp6502
+    title_tiles.bin.rp6502
     DATA file
     RESET file
     ${CMAKE_CURRENT_SOURCE_DIR}/src/main.hlp

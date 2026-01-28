@@ -68,13 +68,21 @@ def convert_image(image_path, output_path, mode):
 
                         for y in range(sprite_size):
                             for x in range(base_x, base_x + sprite_size, 2):
-                                # GET INDICES DIRECTLY
-                                p1 = use_im.getpixel((x, y))
-                                p2 = use_im.getpixel((x+1, y))
+                                # Check alpha from ORIGINAL RGB image to enforce transparency
+                                r1, g1, b1, a1 = rgb_im.getpixel((x, y))
+                                r2, g2, b2, a2 = rgb_im.getpixel((x+1, y))
+
+                                if a1 < 128:
+                                    p1 = 0 # Force transparent
+                                else:
+                                    p1 = use_im.getpixel((x, y))
                                 
-                                # Handle transparency if defined in info, 
-                                # but usually Index 0 is just treated as trans.
-                                # Just pack the raw indices.
+                                if a2 < 128:
+                                    p2 = 0 # Force transparent
+                                else:
+                                    p2 = use_im.getpixel((x+1, y))
+                                
+                                # Pack the indices
                                 o.write(rp6502_pack_tile_bpp4(p1, p2).to_bytes(1, "little"))
                                 
                     # === MODE: SPRITE (16-bit Color) ===
