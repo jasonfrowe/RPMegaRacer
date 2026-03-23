@@ -60,27 +60,26 @@ void load_file_to_ram(const char* filename, void* dest, uint16_t max_size) {
     close(fd);
 }
 
-void load_track_data(const char* track_dir) {
+void load_track_data(int track_id) {
     char path[64];
     
     // 1. Load Map to XRAM (and RAM copy)
-    sprintf(path, "%s/map.bin", track_dir);
+    sprintf(path, "ROM:track%02d_map.bin", track_id);
     load_file_to_xram(path, TRACK_MAP_ADDR, 3072);
     
     // Also read map into RAM for quick collision lookups
-    // (We could read back from XRAM, but reading file is fine too)
     load_file_to_ram(path, world_map, sizeof(world_map));
 
     // 2. Load Tiles to XRAM
-    sprintf(path, "%s/tiles.bin", track_dir);
+    sprintf(path, "ROM:track%02d_tiles.bin", track_id);
     load_file_to_xram(path, TRACK_DATA, TRACK_DATA_SIZE);
 
     // 3. Load Collision Masks to RAM
-    sprintf(path, "%s/collision.bin", track_dir);
+    sprintf(path, "ROM:track%02d_collision.bin", track_id);
     load_file_to_ram(path, tile_collision_masks, sizeof(tile_collision_masks));
 
     // 4. Load Properties to RAM
-    sprintf(path, "%s/properties.bin", track_dir);
+    sprintf(path, "ROM:track%02d_properties.bin", track_id);
     load_file_to_ram(path, tile_properties, sizeof(tile_properties));
 }
 
@@ -128,15 +127,12 @@ void load_track(int track_id) {
     memset(tile_collision_masks, 0, sizeof(tile_collision_masks));
     for (int i = 0; i < 256; i++) tile_properties[i] = TERRAIN_WALL;
 
-    char track_dir[32];
-    sprintf(track_dir, "tracks/track%02d", track_id);
-    
     // Load Map, Tiles, Collision, Properties
-    load_track_data(track_dir);
+    load_track_data(track_id);
 
     // Load Waypoints
     char waypoints_file[64];
-    sprintf(waypoints_file, "%s/waypoints.bin", track_dir);
+    sprintf(waypoints_file, "ROM:track%02d_waypoints.bin", track_id);
     load_waypoints(waypoints_file);
 
     last_loaded_track_id = track_id;

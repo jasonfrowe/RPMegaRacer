@@ -11,23 +11,23 @@ void load_plane2(void)
     int fd;
 
     // 1. Load Tile Data (Graphics)
-    fd = open("assets/title_tiles.bin", O_RDONLY);
+    fd = open("ROM:title_tiles.bin", O_RDONLY);
     if (fd >= 0) {
         // read_xram reads directly from file descriptor to XRAM address
         read_xram(TITLE_DATA, TITLE_DATA_SIZE, fd);
         close(fd);
-        printf("Loaded assets/title_tiles.bin\n");
+        printf("Loaded ROM:title_tiles.bin\n");
     } else {
-        printf("Error: Could not open assets/title_tiles.bin\n");
+        printf("Error: Could not open ROM:title_tiles.bin\n");
     }
 
     // 2. Load Tile Map (Layout)
-    fd = open("assets/title_map.bin", O_RDONLY);
+    fd = open("ROM:title_map.bin", O_RDONLY);
     if (fd >= 0) {
         read_xram(TITLE_MAP_ADDR, TITLE_MAP_SIZE, fd);
         close(fd);
-        printf("Loaded assets/title_map.bin\n");
+        printf("Loaded ROM:title_map.bin\n");
     } else {
-        printf("Error: Could not open assets/title_map.bin\n");
+        printf("Error: Could not open ROM:title_map.bin\n");
     }
 }

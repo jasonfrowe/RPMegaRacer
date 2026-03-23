@@ -5,4 +5,5 @@ CMakeUserPresets.json
 Sprites
 .DS_Store
 .venv
+.ai.c.swp
 /releases
