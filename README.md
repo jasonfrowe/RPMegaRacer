@@ -2,6 +2,9 @@
 
 A high-performance, top-down arcade racing game for the [**RP6502 PicoComputer**](https://picocomputer.github.io/), heavily inspired by Atari's classic *Super Sprint* and the *Micro Machines* series.
 
+![Titlescreen of RP Mega Racer on RP6502](screenshots/MegaRacer_Title.png)
+
+
 ## About
 
 **RP Mega Racer** pushes the limits of the RP6502, utilizing its unique multi-core architecture to deliver a smooth 60 FPS racing experience. Featuring hardware-accelerated affine (rotating) sprites, multi-plane scrolling backgrounds, and a unique hybrid audio engine, it brings 16-bit arcade vibes to the 8-bit 6502 world.

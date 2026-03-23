@@ -125,17 +125,20 @@ void update_finished_screen(void) {
         }
 
         if (is_action_pressed(0, ACTION_PAUSE)) { 
-            // Progression Logic
             if (race_winner == 0) {
-                current_track_id++; // Next track!
+                // Player won: advance to next track and go straight into race
+                current_track_id++;
                 if (current_track_id > NUM_TRACKS) {
-                    current_track_id = 1; // Loop back to Track 1
+                    current_track_id = 1; // Cycle back to Track 1
                 }
+                reset_race();
+                current_state = STATE_COUNTDOWN;
+                state_timer = COUNTDOWN_TOTAL_TIME;
             } else {
-                current_track_id = 1; // Back to start on failure
+                // Player lost: reset to Track 1 and return to title screen
+                current_track_id = 1;
+                reset_race();
             }
-            
-            reset_race(); 
         }
     }
 }
