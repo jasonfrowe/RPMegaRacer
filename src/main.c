@@ -305,7 +305,8 @@ int main(void) {
         // 4. PHYSICS & LOGIC
         handle_input();
 
-        if (key(KEY_ESC)) exit(0);
+        // ALT+F4 exits the game cleanly
+        if ((key(KEY_LEFTALT) || key(KEY_RIGHTALT)) && key(KEY_F4)) return 0;
 
         switch (current_state) {
             case STATE_TITLE:
