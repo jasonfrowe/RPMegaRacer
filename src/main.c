@@ -4,6 +4,7 @@
 #include "constants.h"
 #include "player.h"
 #include "input.h"
+#include "usb_hid_keys.h"
 #include "opl.h"
 #include "track.h"
 #include "sound.h"
@@ -303,6 +304,8 @@ int main(void) {
 
         // 4. PHYSICS & LOGIC
         handle_input();
+
+        if (key(KEY_ESC)) exit(0);
 
         switch (current_state) {
             case STATE_TITLE:
