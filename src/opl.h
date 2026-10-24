@@ -3,6 +3,9 @@
 
 #define MUSIC_FILENAME "ROM:DEMO.BIN"
 
+#include "xram.h"
+#define OPL_ADDR XRAM_OPL
+
 typedef struct {
     uint16_t delay_ms; 
     uint8_t type;      // 0: Off, 1: On, 3: Patch

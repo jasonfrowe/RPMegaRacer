@@ -1,94 +1,45 @@
 # How to Create a New Race Track
 
-This guide outlines the procedure for creating a new race map for RPMegaRacer. 
-
 ## Prerequisites
-- **Aseprite**: For editing tiles and exporting the map.
-- **Python 3**: For running the conversion tools.
-- **Project Tools**: Located in the `tools/` directory.
+- **Aseprite**, for the tiles and the map.
+- **Python 3** with Pillow and NumPy (`.venv/bin/pip install -r requirements.txt`).
 
-## Directory Structure
-Tracks are located in `tracks/<track_name>/`. Each track directory should contain:
-- `map.bin`: The 64x48 tilemap indices.
-- `tiles.bin`: The visual tile data (reused from `images/track_A_tiles.bin` if using the standard set).
-- `collision.bin`: Generated collision masks.
-- `properties.bin`: Generated tile properties (Road/Grass/Wall).
-- `waypoints.bin`: AI navigation points.
-- `waypoints.json`: Source file for waypoints (recommended).
+## What a Track Folder Holds
 
-## Step-by-Step Guide
+`tracks/trackNN/`:
 
-### 1. Create the Map in Aseprite
-1.  Open `Sprites/Track_Map_A.aseprite` (or create a new 64x48 pixel image).
-2.  Use the pencil tool to draw your track using the existing tileset indices.
-3.  **Export the Map**:
-    - Select the Tilemap layer.
-    - Go to `File > Scripts > Open Scripts Folder` if you haven't installed `tools/export_map.lua`.
-    - Run the `export_map.lua` script (File > Scripts > export_map).
-    - Save as `tracks/<your_track>/map.bin`.
+| File | Made by | Use |
+| :--- | :--- | :--- |
+| `map.bin` | Aseprite + `tools/export_map.lua` | 64x48 tile map |
+| `tiles.bin` | `tools/convert_sprite.py` | the 8x8 tiles, 4 bits per pixel |
+| `collision.bin`, `properties.bin` | `tools/process_track.py` | which pixels are wall, which tiles are grass |
+| `waypoints.json` | you | a rough loop in race order, starting on the finish line |
 
-### 2. Generate Tile Data (Start Here if making NEW tiles)
-If you are modifying the graphical tiles themselves:
-1.  Edit `Sprites/Track_A_tiles.aseprite`.
-2.  Export as PNG: `Sprites/Track_A_tiles.png`.
-3.  Run the converter:
-    ```bash
-    ./tools/convert_sprite.py --mode tile -o images/Track_A_tiles.bin Sprites/Track_A_tiles.png
-    ```
-4.  Copy this binary to your track folder if you want a self-contained track, or referencing it from `images/` is fine if the code supports it (currently code loads from specific track dir, so copy it or symlink).
-    ```bash
-    cp images/Track_A_tiles.bin tracks/<your_track>/tiles.bin
-    ```
+The build runs `tools/make_track.py` on each folder to make what the game loads:
 
-### 3. Generate Physics Data (Collision & Properties)
-The game needs to know which tiles are walls, road, or grass. This is generated automatically from the tile graphics.
+- `walls.bin`: the walls on a 2x2 pixel grid. The cars collide with this.
+- `grass.bin`: one bit per tile, for grass drag.
+- `path.bin`: the AI racing line, about 8 px between points, starting at the finish line, with the heading, the room either side and a target speed at each point.
 
-Run `process_track.py` with your tiles binary and the output directory:
-```bash
-./tools/process_track.py images/Track_A_tiles.bin tracks/<your_track>
-```
-This will create `collision.bin` and `properties.bin` in the destination folder.
+## Steps
 
-### 4. Create AI Waypoints
-Waypoints guide the AI cars.
-1.  Create a JSON file `tracks/<your_track>/waypoints.json` with a list of `[x, y]` coordinates.
-    - Coordinates are in **pixels** (0-511, 0-383).
-    - Example:
-    ```json
-    [
-        [255, 60],
-        [120, 50],
-        [81, 81]
-    ]
-    ```
-2.  Run the packer tool:
-    ```bash
-    ./tools/pack_waypoints.py tracks/<your_track>/waypoints.bin tracks/<your_track>/waypoints.json
-    ```
+1. **Map**: draw the 64x48 map in Aseprite and export it with `export_map.lua` to `tracks/trackNN/map.bin`.
+2. **Tiles** (only if you changed them):
+   ```bash
+   ./tools/convert_sprite.py --mode tile -o tracks/trackNN/tiles.bin Sprites/Track_A_tiles.png
+   ```
+3. **Walls and terrain**:
+   ```bash
+   ./tools/process_track.py tracks/trackNN/tiles.bin tracks/trackNN
+   ```
+   Road is colours 1 and 2, grass 3 and 8, everything else is wall. The finish line tiles are listed in `process_track.py` and in `tools/trackdata.py`.
+4. **Waypoints**: write `tracks/trackNN/waypoints.json`, a list of `[x, y]` pixels (0-511, 0-383) going round the track in race order. The first point must be on the finish line, and the line between points must not cross a wall. A dozen or so points are enough: they only guide the racing line, which is worked out from the walls.
+5. **Check the racing line**:
+   ```bash
+   .venv/bin/python tools/make_track.py tracks/trackNN /tmp/trackNN --png /tmp/trackNN.png
+   ```
+   The picture shows the line coloured by speed (red slow, green fast), with the room either side in blue.
+6. **Add it to the build**: add `NN` to the `foreach` in `CMakeLists.txt` and raise `NUM_TRACKS` in `src/track.h`.
+7. **Race it**: `tools/simrace.sh NN` should finish with few wall contacts and no rescues.
 
-## Example: Creating Track 02
-
-```bash
-# 1. Create directory
-mkdir -p tracks/track02
-
-# 2. Export map from Aseprite to tracks/track02/map.bin
-
-# 3. Use standard tiles
-cp images/Track_A_tiles.bin tracks/track02/tiles.bin
-
-# 4. Generate physics
-./tools/process_track.py tracks/track02/tiles.bin tracks/track02
-
-# 5. Create waypoints
-echo "[[245, 60], [245, 100], [300, 100]]" > tracks/track02/waypoints.json
-./tools/pack_waypoints.py tracks/track02/waypoints.bin tracks/track02/waypoints.json
-```
-
-## Loading the New Track
-To test your new track, update `src/track.c` -> `init_track_physics()`:
-
-```c
-load_track_data("tracks/track02");
-load_waypoints("tracks/track02/waypoints.bin");
-```
+The grid is laid out behind the first racing line point, facing along the line.

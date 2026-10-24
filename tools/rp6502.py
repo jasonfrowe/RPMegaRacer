@@ -11,12 +11,18 @@ import os
 import re
 import time
 import binascii
+import codecs
 import argparse
 import configparser
 import platform
 import sys
 import select
 import ctypes
+import json
+import glob
+import shlex
+import socket
+import subprocess
 from typing import Union
 
 # POSIX
@@ -34,10 +40,6 @@ try:
 except (ImportError, AttributeError):
     pass
 
-# The run action will upload any ROM with application assets.
-# These are reserved system assets which won't trigger the upload.
-RESERVED_ASSETS = {"help", "icon"}
-
 # Rename this file for use on other platforms.
 SCRIPT_FILE = os.path.basename(__file__)
 SCRIPT_NAME = os.path.splitext(SCRIPT_FILE)[0].upper()
@@ -47,7 +49,7 @@ SCRIPT_NAME = os.path.splitext(SCRIPT_FILE)[0].upper()
 RESPONSE_TIMEOUT = 2.0
 
 
-class SerialPort:
+class SerialDevice:
     """Cross-platform serial port implementation."""
 
     def __init__(self, port: str):
@@ -186,12 +188,11 @@ class SerialPort:
         if self._is_posix:
             total_written = 0
             while total_written < len(data):
-                # Wait for device to be ready for writing
-                _, ready_to_write, _ = select.select([], [self._fd], [], RESPONSE_TIMEOUT)
-                if not ready_to_write:
-                    raise TimeoutError("Timeout: device not ready for writing")
-                written = os.write(self._fd, data[total_written:])
-                total_written += written
+                try:
+                    written = os.write(self._fd, data[total_written:])
+                    total_written += written
+                except BlockingIOError:
+                    select.select([], [self._fd], [])
         else:
             written = wintypes.DWORD()
             buffer = ctypes.create_string_buffer(bytes(data))
@@ -260,18 +261,16 @@ class SerialPort:
         """Send a break signal."""
         duration = 0.1  # works down to 300bps
         if self._is_posix:
+            if platform.system() == "Darwin":
+                TIOCSBRK, TIOCCBRK = 0x2000747B, 0x2000747A
+            else:
+                TIOCSBRK, TIOCCBRK = 0x5427, 0x5428
             try:
-                # TIOCSBRK / TIOCCBRK for macOS are 0x2000747b / 0x2000747a
-                import fcntl
-                try:
-                    fcntl.ioctl(self._fd, 0x2000747b) # TIOCSBRK
-                    time.sleep(duration)
-                    fcntl.ioctl(self._fd, 0x2000747a) # TIOCCBRK
-                except Exception:
-                    # Fallback to standard POSIX break
-                    termios.tcsendbreak(self._fd, 0)
+                fcntl.ioctl(self._fd, TIOCSBRK)
+                time.sleep(duration)
+                fcntl.ioctl(self._fd, TIOCCBRK)
             except Exception:
-                pass
+                termios.tcsendbreak(self._fd, 0)
         else:
             try:
                 kernel32.EscapeCommFunction(self._handle, 8)  # SETBREAK
@@ -295,6 +294,262 @@ class SerialPort:
             self._handle = None
 
 
+class TelnetDevice:
+    """Telnet connection per RFC 854/855 with Q-method (RFC 1143) negotiation."""
+
+    # IAC and commands (RFC 854)
+    IAC = 0xFF
+    DONT = 0xFE
+    DO = 0xFD
+    WONT = 0xFC
+    WILL = 0xFB
+    SB = 0xFA
+    SE = 0xF0
+    BRK = 0xF3
+    # Options (RFC 856 binary transmission)
+    BINARY = 0x00
+
+    # Q-method states. We never initiate disable, so WANT_NO is unused.
+    _NO, _YES, _WANT_YES = 0, 1, 2
+
+    def __init__(self, host: str, port: int, key: str):
+        self._host = host
+        self._port = port
+        self._key = key
+        self._sock = None
+        self._read_buf = b""
+        self._iac_pending = b""
+        # Per-option negotiation state: opt -> [us, him]
+        self._opts = {}
+
+    # --- low-level send ---
+
+    def _send_raw(self, data: bytes):
+        """Send raw bytes, waiting on backpressure via select."""
+        total = 0
+        while total < len(data):
+            try:
+                total += self._sock.send(data[total:])
+            except BlockingIOError:
+                select.select([], [self._sock], [])
+
+    def _send_iac(self, *parts: int):
+        """Send IAC followed by one or more command bytes."""
+        self._send_raw(bytes((self.IAC, *parts)))
+
+    # --- option negotiation (RFC 1143 Q-method) ---
+
+    def _want(self, opt: int) -> bool:
+        """Policy: which options we accept on either side."""
+        return opt == self.BINARY
+
+    def _opt(self, opt: int) -> list:
+        if opt not in self._opts:
+            self._opts[opt] = [self._NO, self._NO]
+        return self._opts[opt]
+
+    def _offer_will(self, opt: int):
+        """Request to enable `opt` on our side."""
+        s = self._opt(opt)
+        if s[0] == self._NO:
+            s[0] = self._WANT_YES
+            self._send_iac(self.WILL, opt)
+
+    def _offer_do(self, opt: int):
+        """Request to enable `opt` on peer's side."""
+        s = self._opt(opt)
+        if s[1] == self._NO:
+            s[1] = self._WANT_YES
+            self._send_iac(self.DO, opt)
+
+    def _recv_do(self, opt: int):
+        s = self._opt(opt)
+        if s[0] == self._NO:
+            if self._want(opt):
+                s[0] = self._YES
+                self._send_iac(self.WILL, opt)
+            else:
+                self._send_iac(self.WONT, opt)
+        elif s[0] == self._WANT_YES:
+            s[0] = self._YES
+
+    def _recv_dont(self, opt: int):
+        s = self._opt(opt)
+        if s[0] == self._YES:
+            s[0] = self._NO
+            self._send_iac(self.WONT, opt)
+        elif s[0] == self._WANT_YES:
+            s[0] = self._NO
+
+    def _recv_will(self, opt: int):
+        s = self._opt(opt)
+        if s[1] == self._NO:
+            if self._want(opt):
+                s[1] = self._YES
+                self._send_iac(self.DO, opt)
+            else:
+                self._send_iac(self.DONT, opt)
+        elif s[1] == self._WANT_YES:
+            s[1] = self._YES
+
+    def _recv_wont(self, opt: int):
+        s = self._opt(opt)
+        if s[1] == self._YES:
+            s[1] = self._NO
+            self._send_iac(self.DONT, opt)
+        elif s[1] == self._WANT_YES:
+            s[1] = self._NO
+
+    # --- IAC scanner ---
+
+    def _strip_iac(self, data: bytes) -> bytes:
+        """Extract user data from incoming bytes, handling telnet commands."""
+        data = self._iac_pending + data
+        self._iac_pending = b""
+        out = bytearray()
+        negotiators = {
+            self.DO: self._recv_do,
+            self.DONT: self._recv_dont,
+            self.WILL: self._recv_will,
+            self.WONT: self._recv_wont,
+        }
+        i, n = 0, len(data)
+        while i < n:
+            if data[i] != self.IAC:
+                out.append(data[i])
+                i += 1
+                continue
+            if i + 1 >= n:
+                self._iac_pending = data[i:]
+                break
+            cmd = data[i + 1]
+            if cmd == self.IAC:
+                # IAC IAC = literal 0xFF
+                out.append(0xFF)
+                i += 2
+            elif cmd in negotiators:
+                if i + 2 >= n:
+                    self._iac_pending = data[i:]
+                    break
+                negotiators[cmd](data[i + 2])
+                i += 3
+            elif cmd == self.SB:
+                # IAC SB ... IAC SE -- skip subnegotiation payload
+                j = i + 2
+                while j + 1 < n:
+                    if data[j] == self.IAC:
+                        if data[j + 1] == self.SE:
+                            j += 2
+                            break
+                        j += 2  # IAC IAC = escaped 0xFF inside subneg
+                    else:
+                        j += 1
+                else:
+                    self._iac_pending = data[i:]
+                    break
+                i = j
+            else:
+                # 2-byte commands without option (NOP, DM, BRK, IP, AO, AYT, EC, EL, GA, SE)
+                i += 2
+        return bytes(out)
+
+    # --- connection lifecycle ---
+
+    def open(self):
+        """Connect and perform passkey login."""
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self._sock.settimeout(RESPONSE_TIMEOUT)
+        try:
+            self._sock.connect((self._host, self._port))
+            # Request BINARY transmission on both sides (RFC 856)
+            # while still in blocking mode so the offers get out promptly.
+            self._offer_will(self.BINARY)
+            self._offer_do(self.BINARY)
+            self._sock.setblocking(False)
+            self.read_until(b":")
+            self.write(self._key.encode("ascii") + b"\r\n")
+            self.read_until(b"\n")  # passkey echo
+            response = self.read_until(b"\n").decode("ascii", errors="replace").strip()
+            if response.startswith("?"):
+                raise RuntimeError(response)
+        except Exception:
+            self._sock.close()
+            self._sock = None
+            raise
+
+    # --- public I/O ---
+
+    def write(self, data: bytes):
+        """Write data, escaping IAC (0xFF) per telnet spec."""
+        self._send_raw(data.replace(b"\xff", b"\xff\xff"))
+
+    def read(self, size: int = 1) -> bytes:
+        """Read up to `size` bytes; times out after RESPONSE_TIMEOUT of silence."""
+        deadline = time.monotonic() + RESPONSE_TIMEOUT
+        while len(self._read_buf) < size:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                # Only recv what we still need so fileno() readiness stays in
+                # sync with _read_buf -- callers select() on us for terminals.
+                chunk = self._sock.recv(size - len(self._read_buf))
+                if not chunk:
+                    break  # peer closed
+                self._read_buf += self._strip_iac(chunk)
+                deadline = time.monotonic() + RESPONSE_TIMEOUT
+            except BlockingIOError:
+                ready, _, _ = select.select([self._sock], [], [], remaining)
+                if not ready:
+                    break
+            except OSError:
+                break
+        result = self._read_buf[:size]
+        self._read_buf = self._read_buf[size:]
+        return result
+
+    def read_until(self, delimiter: bytes = b"\n") -> bytes:
+        """Read until delimiter is found or timeout occurs."""
+        start = time.monotonic()
+        buffer = b""
+        while True:
+            if delimiter in buffer:
+                return buffer
+            if time.monotonic() - start > RESPONSE_TIMEOUT:
+                return buffer
+            chunk = self.read(1)
+            if chunk:
+                buffer += chunk
+            else:
+                time.sleep(0.001)
+
+    def flush_read_bufs(self):
+        """Discard all pending input data."""
+        self._read_buf = b""
+        self._iac_pending = b""
+        while True:
+            try:
+                if not self._sock.recv(4096):
+                    break
+            except (BlockingIOError, OSError):
+                break
+
+    def send_break(self):
+        """Send telnet BREAK (RFC 854)."""
+        self._send_iac(self.BRK)
+
+    def fileno(self) -> int:
+        """Return the socket file descriptor for select()."""
+        return self._sock.fileno()
+
+    def close(self):
+        """Close the telnet connection."""
+        if self._sock is not None:
+            self._sock.close()
+            self._sock = None
+
+
 class Console:
     """Manages the RIA console over a serial connection."""
 
@@ -303,30 +558,48 @@ class Console:
         if platform.system() == "Windows":
             return "COM1"
         elif platform.system() == "Darwin":
-            import glob
-
-            # Darwin (macOS) usbmodem devices. Prioritize tty over cu.
-            devices = sorted(glob.glob("/dev/tty.usbmodem*") + glob.glob("/dev/cu.usbmodem*"))
+            devices = sorted(glob.glob("/dev/cu.usbmodem*"))
             if devices:
                 return devices[0]
-            return "/dev/tty.usbmodem"
+            return "/dev/cu.usbmodem"
         elif platform.system() == "Linux":
             return "/dev/ttyACM0"
         else:
             return "/dev/tty"
 
-    def __init__(self, name):
-        """Initialize console over serial connection."""
-        self.serial = SerialPort(name)
+    def __init__(self, port):
+        """Initialize console over serial or telnet connection."""
+        self.serial = port
+        self._code_page = None
         self.serial.open()
 
     def code_page(self, timeout: float = RESPONSE_TIMEOUT) -> str:
-        """Fetch code page to use for terminal encoding"""
-        self.serial.write(b"set cp\r")
-        self.wait_for_prompt(":", timeout)
-        result = self.serial.read_until().decode("ascii")
-        self.wait_for_prompt("]", timeout)
-        return f"cp{re.sub(r'[^0-9]', '', result)}"
+        """Fetch (and cache) the device code page for terminal/filename encoding."""
+        if self._code_page is None:
+            self.serial.write(b"set cp\r")
+            self.wait_for_prompt(":", timeout)
+            result = self.serial.read_until().decode("ascii")
+            self.wait_for_prompt("]", timeout)
+            self._code_page = f"cp{re.sub(r'[^0-9]', '', result)}"
+        return self._code_page
+
+    def quote(self, s: str) -> str:
+        """Quote a name/arg for the monitor parser (LOAD/UPLOAD/CD)."""
+        encoding = "ascii" if s.isascii() else self.code_page()
+        try:
+            raw = s.encode(encoding, "replace")
+        except LookupError:
+            raw = s.encode("ascii", "replace")  # unknown code page; degrade
+        out = ['"']
+        for byte in raw:
+            if byte in (0x22, 0x5C):  # " and backslash
+                out.append("\\" + chr(byte))
+            elif 0x20 <= byte < 0x7F:
+                out.append(chr(byte))
+            else:
+                out.append(f"\\{byte:03o}")
+        out.append('"')
+        return "".join(out)
 
     def terminal(self, cp):
         """Dispatch to the correct terminal emulator"""
@@ -339,35 +612,45 @@ class Console:
 
     def term_posix(self, cp: str):
         """POSIX terminal emulator for Linux, BSD, MacOS, etc."""
-        tty.setraw(sys.stdin.fileno())
-        ctrl_a_pressed = False
-        while True:
-            ready, _, _ = select.select([sys.stdin, self.serial], [], [], None)
-            if sys.stdin in ready:
-                char = os.read(sys.stdin.fileno(), 1).decode("utf-8", errors="ignore")
-                if char == "\x01":  # CTRL-A
-                    ctrl_a_pressed = True
-                    self.serial.write(char.encode(cp))
-                elif ctrl_a_pressed and char.lower() in "bf":
-                    self.send_break()  # eats prompt
-                    sys.stdout.write("\r\n]")  # fake prompt
-                    ctrl_a_pressed = False
-                elif ctrl_a_pressed and char.lower() in "xq":
-                    sys.stdout.write("\r\n")
-                    if sys.stdin.isatty():
-                        os.system("stty sane")
-                    break
-                else:
-                    ctrl_a_pressed = False
-                    self.serial.write(char.encode(cp))
-            if self.serial in ready:
-                data = self.serial.read(1)
-                if len(data) > 0:
-                    try:
-                        sys.stdout.write(data.decode(cp))
-                    except UnicodeDecodeError:
-                        sys.stdout.write(f"\\x{data[0]:02x}")
-                    sys.stdout.flush()
+        fd = sys.stdin.fileno()
+        saved = termios.tcgetattr(fd) if sys.stdin.isatty() else None
+        if saved:
+            tty.setraw(fd)
+        # A keystroke arrives a byte at a time and only a whole character can
+        # be spelled in the device code page.
+        decoder = codecs.getincrementaldecoder("utf-8")("ignore")
+        try:
+            ctrl_a_pressed = False
+            while True:
+                ready, _, _ = select.select([sys.stdin, self.serial], [], [], None)
+                if sys.stdin in ready:
+                    char = decoder.decode(os.read(fd, 1))
+                    if not char:
+                        continue  # a character still arriving
+                    if char == "\x01":  # CTRL-A
+                        ctrl_a_pressed = True
+                        self.serial.write(char.encode(cp, "replace"))
+                    elif ctrl_a_pressed and char.lower() in "bf":
+                        self.send_break()  # eats prompt
+                        sys.stdout.write("\r\n]")  # fake prompt
+                        ctrl_a_pressed = False
+                    elif ctrl_a_pressed and char.lower() in "xq":
+                        sys.stdout.write("\r\n")
+                        break
+                    else:
+                        ctrl_a_pressed = False
+                        self.serial.write(char.encode(cp, "replace"))
+                if self.serial in ready:
+                    data = self.serial.read(1)
+                    if len(data) > 0:
+                        try:
+                            sys.stdout.write(data.decode(cp))
+                        except UnicodeDecodeError:
+                            sys.stdout.write(f"\\x{data[0]:02x}")
+                        sys.stdout.flush()
+        finally:
+            if saved:
+                termios.tcsetattr(fd, termios.TCSADRAIN, saved)
 
     def term_windows(self, cp):
         """Windows terminal emulator using Console API"""
@@ -386,7 +669,7 @@ class Console:
                     if key_in:
                         if key_in == "\x01":  # CTRL-A
                             ctrl_a_pressed = True
-                            self.serial.write(key_in.encode(cp))
+                            self.serial.write(key_in.encode(cp, "replace"))
                         elif ctrl_a_pressed and key_in.lower() in "bf":
                             self.send_break()  # eats prompt
                             sys.stdout.write("\r\n]")  # fake prompt
@@ -396,7 +679,7 @@ class Console:
                             break
                         else:
                             ctrl_a_pressed = False
-                            self.serial.write(key_in.encode(cp))
+                            self.serial.write(key_in.encode(cp, "replace"))
                     else:
                         time.sleep(0.001)
             except KeyboardInterrupt:
@@ -554,11 +837,6 @@ class Console:
         self.serial.write(b"\r")
         self.wait_for_prompt("]", timeout)
 
-    def reset(self):
-        """Start the 6502."""
-        self.serial.write(b"RESET\r")
-        self.serial.read_until()
-
     def binary(self, addr: int, data: bytes):
         """Send data to memory using BINARY command."""
         command = f"BINARY ${addr:04X} ${len(data):03X} ${binascii.crc32(data):08X}\r"
@@ -568,7 +846,7 @@ class Console:
 
     def upload(self, file, name: str):
         """Upload readable file to remote file "name"."""
-        self.serial.write(bytes(f"UPLOAD {name}\r", "ascii"))
+        self.serial.write(bytes(f"UPLOAD {self.quote(name)}\r", "ascii"))
         self.wait_for_prompt("}")
         file.seek(0)
         while True:
@@ -577,10 +855,24 @@ class Console:
                 break
             command = f"${len(chunk):03X} ${binascii.crc32(chunk):08X}\r"
             self.serial.write(bytes(command, "ascii"))
+            self.serial.read_until(b"\n")
             self.serial.write(chunk)
             self.wait_for_prompt("}")
         self.serial.write(b"END\r")
         self.wait_for_prompt("]")
+
+    def load(self, name: str, args=()):
+        """Load a previously uploaded ROM file, passing args as its argv."""
+        line = f"LOAD {self.quote(name)}"
+        for arg in args:
+            line += f" {self.quote(arg)}"
+        self.serial.write(f"{line}\r".encode("ascii"))
+        self.serial.read_until()
+
+    def reset(self):
+        """Start the 6502."""
+        self.serial.write(b"RESET\r")
+        self.serial.read_until()
 
     def send_rom(self, rom):
         """Send rom."""
@@ -631,21 +923,22 @@ class ROM:
             raise ValueError(f"Invalid hex address: {s!r}")
         return int(s, 0)
 
-    def __init__(self):
+    def __init__(self, replace=()):
         """Sparse array of virtual ROM with optional named assets."""
         self.data = {}
         self.alloc = {}
         self.assets = []  # list of (name, bytes)
+        self.replace = set(replace)
 
     def add_asset(self, name: str, data: bytes):
         """Append a named asset to the ROM."""
-        if any(n == name for n, _ in self.assets):
-            raise ROMException(f"Asset name already exists: {name}")
+        for i, (n, _) in enumerate(self.assets):
+            if n == name:
+                if name not in self.replace:
+                    raise ROMException(f"Asset name already exists: {name}")
+                self.assets[i] = (name, data)
+                return
         self.assets.append((name, data))
-
-    def has_assets(self) -> bool:
-        """Returns true if there are non-reserved named assets."""
-        return any(n not in RESERVED_ASSETS for n, _ in self.assets)
 
     def add_binary_data(self, data: bytes, addr: int):
         """Add binary data to ROM."""
@@ -697,21 +990,21 @@ class ROM:
                 raise ROMException("No nmi address found in file.")
             addr["nmi"] = data[0] + data[1] * 256
             data = data[2:]
-        if addr["nmi"]:
+        if addr["nmi"] is not None:
             self.add_nmi_vector(addr["nmi"])
         if addr["reset"] is True:
             if len(data) < 2:
                 raise ROMException("No reset address found in file.")
             addr["reset"] = data[0] + data[1] * 256
             data = data[2:]
-        if addr["reset"]:
+        if addr["reset"] is not None:
             self.add_reset_vector(addr["reset"])
         if addr["irq"] is True:
             if len(data) < 2:
                 raise ROMException("No irq address found in file.")
             addr["irq"] = data[0] + data[1] * 256
             data = data[2:]
-        if addr["irq"]:
+        if addr["irq"] is not None:
             self.add_irq_vector(addr["irq"])
         self.add_binary_data(data, addr["data"])
 
@@ -746,7 +1039,7 @@ class ROM:
             # Decode first line as cp850 because binary garbage can
             # raise here before our better message gets to the user.
             command = f.readline().decode("cp850")
-            if not re.match(f"^#!{SCRIPT_NAME}\\r?\\n$", command, re.IGNORECASE):
+            if not re.match(f"^#!.*{SCRIPT_NAME}", command, re.IGNORECASE):
                 raise ROMException(f"Invalid ROM file: {file}")
             while True:
                 line = f.readline()
@@ -789,11 +1082,14 @@ class ROM:
 
     def has_reset_vector(self) -> bool:
         """Returns true if $FFFC and $FFFD have been set."""
-        return bool(self.alloc[0xFFFC] and self.alloc[0xFFFD])
+        return bool(self.alloc.get(0xFFFC) and self.alloc.get(0xFFFD))
 
     def next_rom_data(self, addr: int):
         """Find next up-to-1k chunk starting at addr, never crossing 64k page."""
-        for addr in range(addr, 0x1000000):
+        # Bounded by what was allocated rather than by the address space: the
+        # scan to $1000000 costs a third of a second per image, which every
+        # generated ROM and every send_rom was paying to find nothing.
+        for addr in range(addr, max(self.alloc, default=-1) + 1):
             if self.alloc.get(addr):
                 page_end = (addr | 0xFFFF) + 1
                 length = 0
@@ -803,6 +1099,240 @@ class ROM:
                         break
                 return addr, bytearray(self.data[addr + i] for i in range(length))
         return None, None
+
+    def to_bytes(self) -> bytes:
+        """The .rp6502 image: the magic line, the memory chunks as one null
+        asset, then the named ones."""
+        out = f"#!{SCRIPT_NAME}\r\n".encode("ascii")
+        chunks = b""
+        addr, data = self.next_rom_data(0)
+        while data is not None:
+            header = f"${addr:04X} ${len(data):03X} ${binascii.crc32(data):08X}\r\n"
+            chunks += header.encode("ascii") + bytes(data)
+            addr += len(data)
+            addr, data = self.next_rom_data(addr)
+        if chunks:
+            out += f"#>${len(chunks):08X} ${binascii.crc32(chunks):08X}\r\n".encode(
+                "ascii"
+            )
+            out += chunks
+        for asset_name, asset_data in self.assets:
+            out += (
+                f"#>${len(asset_data):08X} "
+                f"${binascii.crc32(asset_data):08X} {asset_name}\r\n"
+            ).encode("ascii")
+            out += asset_data
+        return out
+
+    def write(self, path) -> int:
+        """The image on disk. Returns its length."""
+        data = self.to_bytes()
+        with open(path, "wb") as file:
+            file.write(data)
+        return len(data)
+
+
+class Emulator:
+    """rp6502-emu discovery and debug-adapter error reporting."""
+
+    # True once we know this run is an `emu` launch: we are the IDE's debug
+    # adapter, so errors must be promoted to DAP (see fatal).
+    launching = False
+
+    @staticmethod
+    def find(config=None):
+        """The emulator the tools fetch beside this script."""
+        exe = "rp6502-emu.exe" if platform.system() == "Windows" else "rp6502-emu"
+        beside = "rp6502-emu.exe" if "microsoft" in platform.release().lower() else exe
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), beside)
+        if config:
+            try:
+                rel = os.path.relpath(path, os.path.dirname(os.path.abspath(config)))
+            except ValueError:  # Windows: another drive has no relative path
+                return path
+            if not rel.startswith(os.pardir):
+                return rel.replace(os.sep, "/")
+        return path
+
+    @staticmethod
+    def resolve(emulator: str, config) -> str:
+        """The executable an 'emulator' setting names."""
+        if not emulator:
+            where = f" in {config}" if config else " in a config file"
+            raise RuntimeError(
+                f"No emulator configured — set 'emulator'{where} "
+                f"to the rp6502-emu executable path."
+            )
+        emulator = os.path.expanduser(os.path.expandvars(emulator))
+        if config and not os.path.isabs(emulator):
+            beside = os.path.join(os.path.dirname(os.path.abspath(config)), emulator)
+            if os.path.isfile(beside):
+                return beside
+        return emulator
+
+    @staticmethod
+    def cannot_run(emulator: str, config, err) -> str:
+        """Why the emulator did not start, and where to change it."""
+        if config:
+            return (
+                f"Cannot run emulator '{emulator}': {err} — "
+                f"fix 'emulator' in {config}"
+            )
+        return (
+            f"Cannot run emulator '{emulator}': {err} — "
+            f"name it with 'emulator' in a config file, or put it on PATH"
+        )
+
+    @staticmethod
+    def send_dap_error(message: str):
+        """Speak minimal DAP: acknowledge `initialize`, then fail `launch`/`attach`."""
+        stdin = sys.stdin.buffer
+        stdout = sys.stdout.buffer
+        out_seq = 0
+
+        def read_request():
+            header = b""
+            while not header.endswith(b"\r\n\r\n"):
+                byte = stdin.read(1)
+                if not byte:
+                    return None  # stream closed before a full header
+                header += byte
+            length = 0
+            for line in header.split(b"\r\n"):
+                name, sep, value = line.partition(b":")
+                if sep and name.strip().lower() == b"content-length":
+                    length = int(value.strip())
+            body = b""
+            while len(body) < length:
+                chunk = stdin.read(length - len(body))
+                if not chunk:
+                    return None
+                body += chunk
+            return json.loads(body.decode("utf-8"))
+
+        def send(response):
+            nonlocal out_seq
+            out_seq += 1
+            response["seq"] = out_seq
+            data = json.dumps(response).encode("utf-8")
+            stdout.write(
+                b"Content-Length: " + str(len(data)).encode("ascii") + b"\r\n\r\n"
+            )
+            stdout.write(data)
+            stdout.flush()
+
+        while True:
+            request = read_request()
+            if request is None:
+                return
+            if request.get("type") != "request":
+                continue
+            command = request.get("command")
+            request_seq = request.get("seq", 0)
+            if command in ("launch", "attach"):
+                send(
+                    {
+                        "type": "response",
+                        "request_seq": request_seq,
+                        "success": False,
+                        "command": command,
+                        "message": message,
+                        "body": {
+                            "error": {"id": 1, "format": message, "showUser": True}
+                        },
+                    }
+                )
+                return
+            # `initialize` (and anything else before launch) gets a bare success
+            # so the client proceeds to send the launch request we then fail.
+            response = {
+                "type": "response",
+                "request_seq": request_seq,
+                "success": True,
+                "command": command,
+            }
+            if command == "initialize":
+                response["body"] = {}
+            send(response)
+
+
+def serve_web(path):
+    """Serves the web packages that rp6502_web() makes in <build>/web, with
+    a list of them at the root, until stopped. path is the build folder or
+    a file in it, such as the launch target that VS Code has just built."""
+    import html
+    import http.server
+    import threading
+    import webbrowser
+
+    build = os.path.abspath(path)
+    while not os.path.isfile(os.path.join(build, "CMakeCache.txt")):
+        parent = os.path.dirname(build)
+        if parent == build:
+            raise RuntimeError(f"{path} is not in a CMake build folder")
+        build = parent
+    root = os.path.join(build, "web")
+
+    def packages():
+        if not os.path.isdir(root):
+            return []
+        return sorted(
+            name
+            for name in os.listdir(root)
+            if os.path.isfile(os.path.join(root, name, "index.html"))
+        )
+
+    if not packages():
+        raise RuntimeError(
+            f"{build} has no web packages; rp6502_web() in CMakeLists.txt makes them"
+        )
+
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=root, **kwargs)
+
+        def do_GET(self):
+            if self.path.split("?")[0] not in ("/", "/index.html"):
+                return super().do_GET()
+            items = "".join(
+                f'<li><a href="{html.escape(name)}/">{html.escape(name)}</a>'
+                f' &middot; <a href="{html.escape(name)}.zip">{html.escape(name)}.zip</a></li>'
+                for name in packages()
+            )
+            body = (
+                '<!doctype html><meta charset="utf-8"><title>Web packages</title>'
+                f"<h1>Web packages</h1><ul>{items}</ul>"
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            pass
+
+    # On Windows, SO_REUSEADDR lets a second server bind a port in use.
+    class Server(http.server.ThreadingHTTPServer):
+        allow_reuse_address = os.name != "nt"
+
+    server = None
+    for port in range(8000, 8100):
+        try:
+            server = Server(("127.0.0.1", port), Handler)
+            break
+        except OSError:
+            continue
+    if not server:
+        raise RuntimeError("No free port from 8000 to 8099")
+    url = f"http://127.0.0.1:{server.server_address[1]}/"
+    print(f"[{SCRIPT_FILE}] Serving {root} at {url}", flush=True)
+    # A text browser waits for the page, which is served only after this.
+    threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
 
 
 def exec_args():
@@ -818,9 +1348,12 @@ def exec_args():
     sp = parser.add_subparsers(dest="command", required=True)
     cmds = {
         "term": ("Attach to the RIA console.", None),
+        "emu": ("Launch emulator from config (for IDE).", None),
+        "execute": ("Run local ROM in the emulator with no window, headless or by --script.", 1),
         "run": ("Run local ROM by sending to RIA.", 1),
         "upload": ("Upload local files to RIA USB storage.", "+"),
         "basic": ("Executes a program with the installed BASIC.", 1),
+        "web": ("Serve the web packages of a build folder.", None),
         "create": (
             "Create local ROM file from a file. Additional local ROM files will be merged.",
             "+",
@@ -835,6 +1368,40 @@ def exec_args():
                 nargs=nargs,
                 help="Local filename." if nargs == 1 else "Local filename(s).",
             )
+    parsers["web"].add_argument(
+        "filename", nargs=1, metavar="build", help="CMake build folder, or a file in it."
+    )
+    parsers["create"].add_argument(
+        "--replace",
+        action="append",
+        default=[],
+        metavar="name",
+        help="A later asset of this name replaces an earlier one. Repeatable.",
+    )
+    parsers["execute"].add_argument(
+        "--script", metavar="file", help="Drive the ROM with an emulator script."
+    )
+    parsers["execute"].add_argument(
+        "--seed", metavar="n", help="Fixed random seed, for a reproducible run."
+    )
+    parsers["execute"].add_argument(
+        "--phi2",
+        metavar="khz",
+        help="6502 clock in kHz. Without --script the default is 0, unpaced.",
+    )
+    parsers["execute"].add_argument(
+        "--save-dir",
+        metavar="folder",
+        help="Folder used as SAVE:, instead of the OS folder for saved data.",
+    )
+    # Everything after the ROM filename is the ROM's argv, like `LOAD rom args...`.
+    for cmd in ("run", "execute"):
+        parsers[cmd].add_argument(
+            "rom_args",
+            nargs=argparse.REMAINDER,
+            metavar="args",
+            help="Arguments passed to the ROM.",
+        )
     parser.add_argument(
         "-a",
         "--address",
@@ -870,15 +1437,7 @@ def exec_args():
         "--config",
         dest="config",
         metavar="name",
-        help=f"Configuration file for console connection.",
-    )
-    parser.add_argument(
-        "-t",
-        "--term",
-        dest="term",
-        metavar="bool",
-        default="True",
-        help=f"Attach to console terminal on run.",
+        help=f"Configuration file for debug settings.",
     )
     parser.add_argument(
         "-d",
@@ -886,7 +1445,7 @@ def exec_args():
         dest="device",
         metavar="dev",
         default=Console.default_device(),
-        help=f"Serial device name. Default={Console.default_device()}",
+        help=f"Serial device or telnet address:port. Default={Console.default_device()}",
     )
     parser.add_argument(
         # Hidden alias for anyone used to minicom -D /dev/
@@ -896,20 +1455,80 @@ def exec_args():
         default=argparse.SUPPRESS,
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "-k",
+        "--key",
+        dest="key",
+        metavar="key",
+        default=None,
+        help="Passkey for telnet authentication. Device becomes telnet host.",
+    )
+    parser.add_argument(
+        "-w",
+        "--workdir",
+        dest="workdir",
+        metavar="dir",
+        default=None,
+        help="Remote directory to work in.",
+    )
+    parser.add_argument(
+        "-t",
+        "--term",
+        dest="term",
+        metavar="bool",
+        default="True",
+        help=f"Attach to console terminal on run.",
+    )
     args = parser.parse_args()
+    Emulator.launching = args.command == "emu"
 
-    # Standard library configuration parser
+    # Config file (shared with the emulator, which owns it in ImGui ini format).
     if args.config:
-        config = configparser.ConfigParser()
-        if not os.path.exists(args.config):
-            config[SCRIPT_NAME] = {"device": args.device, "term": args.term}
-            with open(args.config, "w") as cfg:
-                config.write(cfg)
-        else:
-            config.read(args.config)
-        if config.has_section(SCRIPT_NAME):
-            args.device = config[SCRIPT_NAME].get("device", args.device)
-            args.term = config[SCRIPT_NAME].get("term", args.term)
+        launch = f"{SCRIPT_NAME}][Launch"
+        config = configparser.ConfigParser(interpolation=None)
+        # Python 3.9 and older end a section name at the first "]".
+        config.SECTCRE = re.compile(r"\[(?P<header>.+)\]")
+        try:
+            existed = os.path.exists(args.config)
+            if existed:
+                # configparser.read() silently skips unreadable files
+                if not os.access(args.config, os.R_OK):
+                    raise PermissionError("permission denied")
+                config.read(args.config)
+            # Upgrade a legacy plain [RP6502] to [RP6502][Launch].
+            upgrading = config.has_section(SCRIPT_NAME) and not config.has_section(
+                launch
+            )
+            if (not existed) or upgrading:
+                old = (
+                    dict(config[SCRIPT_NAME]) if config.has_section(SCRIPT_NAME) else {}
+                )
+                pick = lambda k: old.get(k, "")
+                config.remove_section(SCRIPT_NAME)  # drop legacy [RP6502]
+                # User always sees the full list of keys, even when blank.
+                config[launch] = {
+                    "emulator": pick("emulator") or Emulator.find(args.config),
+                    "device": pick("device") or args.device,
+                    "key": pick("key") or args.key or "",
+                    "workdir": pick("workdir") or args.workdir or "",
+                    "args": pick("args"),
+                    "term": pick("term") or args.term,
+                }
+                with open(args.config, "w") as cfg:
+                    config.write(cfg)
+        except (configparser.Error, OSError) as e:
+            raise RuntimeError(f"Cannot load config {args.config}: {e}")
+        if config.has_section(launch):
+            sec = config[launch]
+            args.workdir = sec.get("workdir", "") or args.workdir or None
+            args.emulator = sec.get("emulator", "")
+            args.device = sec.get("device", args.device)
+            args.key = sec.get("key", "") or args.key or None
+            args.term = sec.get("term", args.term)
+            args.config_args = sec.get("args", "")
+
+    if args.workdir:
+        args.workdir = args.workdir.strip().strip("/") or None
 
     # Because parser is bad at bool
     if args.term.lower() in ["t", "true"] or (args.term.isdigit() and args.term != "0"):
@@ -939,13 +1558,47 @@ def exec_args():
                 return s
         return None
 
+    def timed_upload(console, file, name):
+        """Upload with timing and throughput logging."""
+        file.seek(0)
+        total_bytes = file.seek(0, 2)
+        file.seek(0)
+        start = time.monotonic()
+        console.upload(file, name)
+        elapsed = time.monotonic() - start
+        if elapsed > 0:
+            rate = total_bytes / elapsed
+            print(
+                f"[{SCRIPT_FILE}] {total_bytes} bytes in {elapsed:.2f}s ({rate:.0f} bytes/s)"
+            )
+
+    def config_rom_args():
+        """The ROM's argv[1..] from the config 'args' key, shell-style quoted."""
+        try:
+            return shlex.split(getattr(args, "config_args", ""))
+        except ValueError as e:
+            raise RuntimeError(f"Cannot parse 'args' in {args.config}: {e}")
+
     # Open console and extend error with a hint about the config file
     if args.command in ["term", "run", "upload", "basic"]:
         if args.config:
             print(f"[{SCRIPT_FILE}] Using device config in {args.config}")
-        print(f"[{SCRIPT_FILE}] Opening device {args.device}")
-        console = Console(args.device)
+        if args.key:
+            host, _, port_str = args.device.rpartition(":")
+            if host and port_str.isdigit():
+                port_num = int(port_str)
+            else:
+                host = args.device
+                port_num = 23
+            print(f"[{SCRIPT_FILE}] Connecting to {host}:{port_num}")
+            transport = TelnetDevice(host, port_num, args.key)
+        else:
+            print(f"[{SCRIPT_FILE}] Opening device {args.device}")
+            transport = SerialDevice(args.device)
+        console = Console(transport)
         console.send_break()
+        if args.workdir:
+            console.command(f"CD {console.quote('/' + args.workdir)}")
 
     if args.command == "term":
         code_page = console.code_page()
@@ -957,22 +1610,16 @@ def exec_args():
         print(f"[{SCRIPT_FILE}] Reading ROM {args.filename[0]}")
         rom = ROM()
         rom.add_rom_file(args.filename[0])
-        if rom.has_assets():
-            print(f"[{SCRIPT_FILE}] Uploading ROM (assets detected)")
-            with open(args.filename[0], "rb") as f:
-                console.upload(f, os.path.basename(args.filename[0]))
-            print(f"[{SCRIPT_FILE}] Loading ROM")
-            console.serial.write(
-                f"LOAD {os.path.basename(args.filename[0])}\r".encode("ascii")
-            )
-            console.serial.read_until()
-        else:
-            print(f"[{SCRIPT_FILE}] Sending ROM")
-            console.send_rom(rom)
-            if rom.has_reset_vector():
-                console.reset()
-            else:
-                print(f"[{SCRIPT_FILE}] No reset vector")
+        print(f"[{SCRIPT_FILE}] Uploading ROM")
+        with open(args.filename[0], "rb") as f:
+            timed_upload(console, f, os.path.basename(args.filename[0]))
+        print(f"[{SCRIPT_FILE}] Loading ROM")
+        rom_args = args.rom_args
+        if rom_args and rom_args[0] == "--":  # REMAINDER keeps a leading "--"
+            rom_args = rom_args[1:]
+        if not rom_args:
+            rom_args = config_rom_args()
+        console.load(os.path.basename(args.filename[0]), rom_args)
         if args.term:
             console.terminal(code_page)
 
@@ -984,7 +1631,7 @@ def exec_args():
                     dest = args.out
                 else:
                     dest = os.path.basename(file)
-                console.upload(f, dest)
+                timed_upload(console, f, dest)
 
     if args.command == "basic":
         code_page = console.code_page()
@@ -1015,47 +1662,104 @@ def exec_args():
         args.reset = str_to_address(parser, args.reset, "-r/--reset")
         args.irq = str_to_address(parser, args.irq, "-i/--irq")
         print(f"[{os.path.basename(__file__)}] Creating {args.out}")
-        rom = ROM()
-        print(f"[{os.path.basename(__file__)}] Adding binary asset {args.filename[0]}")
-        if isinstance(args.address, str):
-            with open(args.filename[0], "rb") as f:
-                rom.add_asset(args.address, f.read())
+        rom = ROM(args.replace)
+        if args.address is None:
+            for vec_value, vec_flag in (
+                (args.nmi, "-n/--nmi"),
+                (args.reset, "-r/--reset"),
+                (args.irq, "-i/--irq"),
+            ):
+                if vec_value is True:
+                    parser.error(
+                        f"argument {vec_flag}: 'file' requires a binary asset (-a)"
+                    )
+            if args.nmi is not None:
+                rom.add_nmi_vector(args.nmi)
+            if args.reset is not None:
+                rom.add_reset_vector(args.reset)
+            if args.irq is not None:
+                rom.add_irq_vector(args.irq)
+            extras_start = 0
         else:
-            rom.add_binary_file(
-                args.filename[0],
-                data=args.address,
-                nmi=args.nmi,
-                reset=args.reset,
-                irq=args.irq,
+            print(
+                f"[{os.path.basename(__file__)}] Adding binary asset {args.filename[0]}"
             )
-        for file in args.filename[1:]:
+            if isinstance(args.address, str):
+                with open(args.filename[0], "rb") as f:
+                    rom.add_asset(args.address, f.read())
+            else:
+                rom.add_binary_file(
+                    args.filename[0],
+                    data=args.address,
+                    nmi=args.nmi,
+                    reset=args.reset,
+                    irq=args.irq,
+                )
+            extras_start = 1
+        for file in args.filename[extras_start:]:
             print(f"[{os.path.basename(__file__)}] Adding ROM asset {file}")
             rom.add_rom_file(file)
-        with open(args.out, "wb+") as file:
-            file.write(f"#!{SCRIPT_NAME}\r\n".encode("ascii"))
-            # Build null asset (memory chunks blob)
-            chunks = b""
-            addr, data = rom.next_rom_data(0)
-            while data is not None:
-                header = f"${addr:04X} ${len(data):03X} ${binascii.crc32(data):08X}\r\n"
-                chunks += header.encode("ascii") + bytes(data)
-                addr += len(data)
-                addr, data = rom.next_rom_data(addr)
-            if chunks:
-                file.write(
-                    f"#>${len(chunks):08X} ${binascii.crc32(chunks):08X}\r\n".encode(
-                        "ascii"
-                    )
+        rom.write(args.out)
+
+    if args.command == "emu":
+        # `emu` exists to launch the emulator as the IDE's debug adapter, which
+        # always passes the project config (for the emulator path and --ini), so
+        # an invocation without one is a misconfiguration.
+        if not args.config:
+            raise RuntimeError(
+                "emu requires -c/--config <file> with an 'emulator' path."
+            )
+        emulator = Emulator.resolve(getattr(args, "emulator", ""), args.config)
+        cmd = [emulator, "--dap", "--ini", args.config]
+        # Config args ride the emulator command line as the ROM's argv;
+        # a launch request that carries its own args overrides them there.
+        rom_args = config_rom_args()
+        if rom_args:
+            cmd += ["--"] + rom_args
+        # Status to stderr only: stdout carries the lldb-dap DAP stream.
+        print(f"[{SCRIPT_FILE}] Launching {emulator}", file=sys.stderr)
+        try:
+            if os.name == "nt":
+                sys.exit(
+                    subprocess.Popen(
+                        cmd, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr
+                    ).wait()
                 )
-                file.write(chunks)
-            # Write named assets
-            for asset_name, asset_data in rom.assets:
-                file.write(
-                    f"#>${len(asset_data):08X} ${binascii.crc32(asset_data):08X} {asset_name}\r\n".encode(
-                        "ascii"
-                    )
-                )
-                file.write(asset_data)
+            os.execvp(cmd[0], cmd)
+        except OSError as e:
+            raise RuntimeError(Emulator.cannot_run(emulator, args.config, e))
+
+    if args.command == "web":
+        serve_web(args.filename[0])
+
+    if args.command == "execute":
+        # The exit code of the ROM becomes the exit code of this process, so a
+        # 6502 program can be a step in a pipeline or a test.
+        emulator = Emulator.resolve(getattr(args, "emulator", ""), args.config)
+        if args.script:
+            cmd = [emulator, "--script", args.script]
+        else:
+            cmd = [emulator, "--headless"]
+        phi2 = args.phi2 if args.phi2 is not None else (None if args.script else "0")
+        if phi2 is not None:
+            cmd += ["--phi2", phi2]
+        if args.seed:
+            cmd += ["--seed", args.seed]
+        if args.save_dir:
+            cmd += ["--save-dir", args.save_dir]
+        cmd.append(args.filename[0])
+        rom_args = args.rom_args
+        if rom_args and rom_args[0] == "--":  # REMAINDER keeps a leading "--"
+            rom_args = rom_args[1:]
+        if not rom_args:
+            rom_args = config_rom_args()
+        if rom_args:
+            cmd += ["--"] + rom_args
+        stdin = None if args.script == "-" else subprocess.DEVNULL
+        try:
+            sys.exit(subprocess.run(cmd, stdin=stdin).returncode)
+        except OSError as e:
+            raise RuntimeError(Emulator.cannot_run(emulator, args.config, e))
 
 
 # This file may be included or run like a program.
@@ -1063,16 +1767,34 @@ if __name__ == "__main__":
     # VSCode SIGKILLs the terminal while in raw mode, return to cooked mode.
     if "tty" in globals() and sys.stdin.isatty():
         os.system("stty sane")
-    # These exceptions are a normal part of using this tool in a build system.
-    # It's annoying when a debugger catches them so we intercept to exit cleanly.
     try:
         exec_args()
-    except (ROMException, FileNotFoundError, TimeoutError, RuntimeError) as e:
-        # Unresolved variable substitutions like ${command:cmake.launchTargetPath}
+    except Exception as e:
+        # On an emu launch we are the IDE's debug adapter.
+        if Emulator.launching:
+            print(f"[{SCRIPT_FILE}] {e}", file=sys.stderr)
+            if not sys.stdin.isatty():
+                try:
+                    Emulator.send_dap_error(f"{e}")
+                except Exception:
+                    pass  # Best effort
+            sys.exit(1)
+        # Exceptions to show in VS Code output instead of Python debugger.
+        if not isinstance(
+            e,
+            (
+                ROMException,
+                FileNotFoundError,
+                TimeoutError,
+                socket.timeout,
+                RuntimeError,
+                ConnectionError,
+                socket.gaierror,
+            ),
+        ):
+            raise
+        # Unresolved variable substitutions like ${command:cmake.launchTargetPath}.
         if re.search(r"\$\{[^}]*\}", str(e)):
-            print(
-                f"[{os.path.basename(__file__)}] Check build for failures",
-                file=sys.stderr,
-            )
-        print(f"[{os.path.basename(__file__)}] {e}", file=sys.stderr)
-        os._exit(1)  # special exit without raising
+            print(f"[{SCRIPT_FILE}] Check build for failures", file=sys.stderr)
+        print(f"[{SCRIPT_FILE}] {e}", file=sys.stderr)
+        os._exit(1)  # Special exit without raising debugger.

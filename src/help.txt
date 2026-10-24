@@ -1,0 +1,14 @@
+RP MEGA RACER
+Top-down arcade racing for the Picocomputer 6502.
+Win a 5 lap race to move on to the next track.
+
+                 Keyboard          Gamepad
+Steer            Left / Right, A D d-pad / left stick
+Gas              Space, Z, Up      A or R2
+Brake / reverse  X, Down           B or L2
+DRS boost        C, Left Shift     X
+Rescue           R                 Y
+Start / pause    Enter, P          Start
+
+DRS charges while you're behind, and fast when you're
+close behind the car ahead. Use it when the bar flashes.

@@ -1,73 +1,19 @@
-# Collision System Documentation
+# Collision System
 
-## Overview
+## Walls
 
-The collision system uses **pixel-perfect sub-tile collision masks** to determine which parts of each 8×8 tile are solid barriers vs. passable terrain.
+`tools/make_track.py` builds a wall grid for each track from the tile collision masks: 256x192 cells of 2x2 pixels, one bit each (`walls.bin`, 6 KB). A cell is a wall if any of its pixels is.
 
-## How It Works
+A car is a circle of 8 points, radius 5 px, around its centre (`car_blocked()` in `src/car.c`). Each frame the car moves along x, then along y, at most 2 px (one cell) per step. An axis that would hit a wall stops, bounces back a little (`WALL_BOUNCE`), and the other axis keeps going with a little scrape (`WALL_SCRAPE`), so a car slides along a wall instead of sticking.
 
-### Collision Masks
-- Each tile has an 8-byte collision mask (one byte per row)
-- Each byte represents 8 pixels: `Bit 7 = left pixel, Bit 0 = right pixel`
-- `1` = solid/barrier, `0` = passable
+Because a step never crosses more than one cell, and the grid keeps even a 1-pixel diagonal barrier connected, a car can't pass through a thin wall.
 
-Example:
-```c
-tile_collision_masks[42][0] = 0xF0;  // ████□□□□ (left half solid)
-tile_collision_masks[42][1] = 0xF0;  // ████□□□□
-// ... etc
-```
+If a car ever does end up in a wall (it shouldn't), `car_unstick()` moves it to the nearest clear spot.
 
-### Terrain Classification
+## Cars
 
-Based on color indices in `Track_A_tiles.bin`:
-- **Road** (passable): color indices 1, 2, 10, 11
-- **Grass** (passable, slowdown): color index 8
-- **Barrier** (solid): all other color indices
+Two cars touch when their centres are closer than 10 px (`car_contact()`). They're pushed apart along the line between them, and only the part of their speed along that line is traded, with a low bounce (`CAR_BOUNCE`). There's no spin and no stun, so a nudge is a nudge. In a shove with the AI, the player gives a little less ground.
 
-### Auto-Generation
+## Terrain
 
-Run `tools/generate_collision_masks.py` to regenerate collision masks from tile graphics:
-
-```bash
-python3 tools/generate_collision_masks.py images/Track_A_tiles.bin > src/collision_masks_generated.c
-```
-
-Then append the generated function to `src/track.c`.
-
-## Current Status
-
-**Tiles processed:** 124 tiles  
-**All tiles are fully solid** (0xFF patterns) - no partial tiles in current tileset
-
-This means your barriers are currently solid blocks. To create diagonal walls, curves, or partial barriers:
-
-1. Edit tiles in Aseprite to have mixed colors (barrier + road/grass in same tile)
-2. Regenerate collision masks using the Python script
-3. Rebuild the project
-
-## Memory Usage
-
-- **2048 bytes**: 256 tiles × 8 bytes per tile
-- All 256 tile slots initialized, but only 124 currently have graphics
-
-## API
-
-### `get_terrain_at(uint16_t x, uint16_t y)`
-Returns terrain type at pixel coordinates (x, y):
-- Checks the specific pixel within the tile
-- Returns `TERRAIN_WALL` if pixel is solid
-- Returns `TERRAIN_ROAD` or `TERRAIN_GRASS` if passable
-
-### `init_track_physics()`
-Initializes the collision system:
-1. Clears all collision masks
-2. Calls `init_tile_collision_masks()` to load generated masks
-3. Sets up `tile_properties[]` array for fallback terrain types
-
-## Future Enhancements
-
-If you create tiles with diagonal walls or curves:
-- The system will automatically detect passable vs. solid pixels
-- Car will smoothly navigate around barrier edges
-- No code changes needed - just regenerate masks from new tile graphics
+Grass (`grass.bin`, one bit per tile) adds drag and cuts grip.

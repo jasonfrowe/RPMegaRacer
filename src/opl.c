@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include "opl.h"
 #include "instruments.h"
-#include "constants.h"
+#include "xram.h"
 
 #include <errno.h>
 
@@ -104,7 +104,6 @@ void OPL_SetVolume(uint8_t chan, uint8_t velocity) {
     // Formula: 63 - (velocity / 2)
     uint8_t vol = 63 - (velocity >> 1);
     
-    static const uint8_t mod_offsets[] = {0x00,0x01,0x02,0x08,0x09,0x0A,0x10,0x11,0x12};
     static const uint8_t car_offsets[] = {0x03,0x04,0x05,0x0B,0x0C,0x0D,0x13,0x14,0x15};
     
     // Write to Carrier (this affects the audible volume most)
@@ -176,9 +175,9 @@ void OPL_Config(uint8_t enable, uint16_t addr) {
 }
 
 static int music_fd = -1;
-static uint8_t music_buffer[512];
+#define MUSIC_BUF 128 /* small reads spread the cost over more frames */
+static uint8_t music_buffer[MUSIC_BUF];
 static uint16_t music_buf_idx = 0;
-static uint16_t music_bytes_ready = 0; 
 static uint16_t music_wait_ticks = 0;
 static bool music_error_state = false;
 
@@ -196,7 +195,7 @@ void music_init(const char* filename) {
     }
 
     // 1. Read into the START of the buffer (index 0)
-    int res = read(music_fd, music_buffer, 512);
+    int res = read(music_fd, music_buffer, MUSIC_BUF);
                 
     if (res < 0) {
         int err = errno;
@@ -205,10 +204,6 @@ void music_init(const char* filename) {
         return;
     }
 
-    // 2. IMPORTANT: Update the count of valid bytes in the buffer
-    // Without this, the sequencer thinks the buffer is empty!
-    music_bytes_ready = res; 
-    
    //  printf("Music: Started. Initialized with %d bytes.\n", res);
 }
 
@@ -222,10 +217,10 @@ void update_music() {
     if (music_wait_ticks == 0) {
         while (music_wait_ticks == 0) {
 
-            if (music_buf_idx >= 512){
+            if (music_buf_idx >= MUSIC_BUF){
                 // printf("Music: Buffer Refill Triggered.\n");
                 
-                int res = read(music_fd, &music_buffer, 512);
+                int res = read(music_fd, &music_buffer, MUSIC_BUF);
                 
                 if (res < 0) {
                     int err = errno;
@@ -246,10 +241,10 @@ void update_music() {
 
 
             if (reg == 0xFF && val == 0xFF) {
-                off_t seek_res = lseek(music_fd, 0, SEEK_SET);
+                lseek(music_fd, 0, SEEK_SET);
 
                 printf("Music: Looping to start of track.\n");
-                music_buf_idx = 512; // Force buffer reload
+                music_buf_idx = MUSIC_BUF; // Force buffer reload
                 delay = 1; // Small delay after loop
 
             } else {

@@ -8,10 +8,9 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-#include "input.h" // Ensure this defines GameAction enum
+#include "input.h" // GameAction
+#include "xram.h"
 
-// Gamepad input structure
-static gamepad_t gamepad[GAMEPAD_COUNT];
 
 #define JOYSTICK_CONFIG_FILE "JOYSTICK.DAT"
 
@@ -63,7 +62,7 @@ static bool wait_for_any_button(uint8_t* field, uint8_t* mask) {
         if (RIA.vsync == vsync_last) continue;
         vsync_last = RIA.vsync;
         
-        RIA.addr0 = GAMEPAD_INPUT;
+        RIA.addr0 = XRAM_GAMEPAD;
         RIA.step0 = 1;
         uint8_t d = RIA.rw0 & 0x0F;
         uint8_t s = RIA.rw0;
@@ -84,8 +83,8 @@ int main(void) {
     printf("\f"); // Clear screen
     printf("=== RP6502 Gamepad Mapper ===\n\n");
     
-    xregn(0, 0, 0, 1, KEYBOARD_INPUT);
-    xregn(0, 0, 2, 1, GAMEPAD_INPUT);
+    xreg_ria_keyboard(XRAM_KEYBOARD);
+    xreg_ria_gamepad(XRAM_GAMEPAD);
     
     printf("Press any button to begin...\n");
     uint8_t f, m;
@@ -103,7 +102,7 @@ int main(void) {
         
         // Debounce: Wait for release
         while (true) {
-            RIA.addr0 = GAMEPAD_INPUT;
+            RIA.addr0 = XRAM_GAMEPAD;
             RIA.step0 = 1;
             uint8_t d = RIA.rw0 & 0x0F;
             uint8_t s = RIA.rw0;

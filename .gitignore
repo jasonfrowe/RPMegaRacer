@@ -7,3 +7,7 @@ Sprites
 .venv
 .ai.c.swp
 /releases
+/tools/rp6502-emu
+/tools/rp6502-emu.*
+/compile_commands.json
+/.cache
