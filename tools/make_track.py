@@ -49,7 +49,7 @@ SPACING = 8.0       # px between points of the racing line
 MAX_POINTS = 250
 
 # Speed model, in px and frames. Keep near the car in src/car.c.
-TURN_RATE = 0.060   # rad per frame the AI is happy to turn at speed
+TURN_RATE = 0.052   # rad per frame the AI is happy to turn at speed
 BRAKE = 0.045       # px per frame per frame of braking
 TOP_SPEED = 3.9     # px per frame, the cap on a hint
 

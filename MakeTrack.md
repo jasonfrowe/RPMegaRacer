@@ -15,7 +15,7 @@
 | `collision.bin`, `properties.bin` | `tools/process_track.py` | which pixels are wall, which tiles are grass |
 | `waypoints.json` | you | a rough loop in race order, starting on the finish line |
 
-The build runs `tools/make_track.py` on each folder to make what the game loads:
+`tools/make_track.py` makes the rest of what the game loads, in the same folder. The build runs it when a track changes, if the project's `.venv` has NumPy and Pillow; commit what it writes, since the GitHub web build doesn't run it:
 
 - `walls.bin`: the walls on a 2x2 pixel grid. The cars collide with this.
 - `grass.bin`: one bit per tile, for grass drag.

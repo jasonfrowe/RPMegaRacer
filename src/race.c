@@ -16,6 +16,7 @@ bool race_log;
 bool paused;
 
 static uint8_t rescue_cooldown;
+static int8_t player_steer;
 
 /* Race statistics, printed to the console for tools/playtest.py. */
 uint16_t stat_wall_hits[NUM_CARS];
@@ -110,6 +111,7 @@ void race_setup(void)
     race_clock = 0;
     race_minutes = race_seconds = race_frames = 0;
     rescue_cooldown = 0;
+    player_steer = 0;
     paused = false;
 }
 
@@ -143,12 +145,33 @@ void race_rescue(Racer *r)
     r->idle = 0;
 }
 
+/* The player's steering eases in over a few frames, so a tap is a small
+ * correction and holding it is full lock. Letting go, or reversing, is
+ * immediate. */
+#define STEER_RAMP 3
+
+static int8_t steer_ramp(int8_t want)
+{
+    if (want == 0 || (want > 0) != (player_steer > 0))
+        player_steer = 0;
+    if (player_steer < want) {
+        player_steer += STEER_RAMP;
+        if (player_steer > want)
+            player_steer = want;
+    } else if (player_steer > want) {
+        player_steer -= STEER_RAMP;
+        if (player_steer < want)
+            player_steer = want;
+    }
+    return player_steer;
+}
+
 static void player_drive(Racer *r)
 {
     Car *c = &r->car;
     c->gas = input_gas();
     c->brake = input_brake() && !c->gas;
-    c->steer = input_steer();
+    c->steer = steer_ramp(input_steer());
 
     if (rescue_cooldown)
         rescue_cooldown--;

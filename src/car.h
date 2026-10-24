@@ -11,8 +11,8 @@
 
 /* Turning, 8.8 game angle units per frame at full lock. Slow cars still
  * turn, so a car pinned against a wall can always turn away. */
-#define TURN_SLOW 0x0180 /* standing still */
-#define TURN_FAST 0x0360 /* at SPEED_REF and above */
+#define TURN_SLOW 0x0140 /* standing still */
+#define TURN_FAST 0x02C0 /* at SPEED_REF and above */
 #define SPEED_REF 512
 
 /* Share of sideways slide removed per frame, out of 256: lower drifts more. */
@@ -27,8 +27,12 @@
 
 /* Of the speed into a wall, the share that bounces back, out of 256. */
 #define WALL_BOUNCE 48
-/* Sliding along a wall loses 1/2^WALL_SCRAPE of the speed per frame. */
-#define WALL_SCRAPE 4
+/* Sliding along a wall loses 1/2^WALL_FRICTION_SHIFT of the speed into it. */
+#define WALL_FRICTION_SHIFT 2
+/* A hit within this many angle units of running along the wall turns the
+ * car up to WALL_ALIGN_STEP units toward it, each frame it touches. */
+#define WALL_ALIGN_RANGE 40
+#define WALL_ALIGN_STEP 2
 
 /* Car to car contact: centres closer than this (px) touch. */
 #define CAR_RADIUS 5

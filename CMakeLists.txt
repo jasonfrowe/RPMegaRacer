@@ -7,12 +7,19 @@ project(RPMegaRacer C CXX ASM)
 # Option: the OPL2 on the RIA (default), or the FPGA sound card.
 option(USE_NATIVE_OPL2 "Use the RIA native OPL2 support" ON)
 
-# Track tools run in the project's .venv (pip install -r requirements.txt).
+# tools/make_track.py works out each track's walls, grass and racing line
+# (walls.bin, grass.bin, path.bin in tracks/trackNN). They're committed, so a
+# build needs only the standard library. With NumPy and Pillow in the
+# project's .venv (pip install -r requirements.txt), the build makes them
+# again whenever a track or the tool changes.
+set(TRACK_TOOLS OFF)
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.venv/bin/python)
     set(TRACK_PYTHON ${CMAKE_CURRENT_SOURCE_DIR}/.venv/bin/python)
-else()
-    find_package(Python3 REQUIRED COMPONENTS Interpreter)
-    set(TRACK_PYTHON ${Python3_EXECUTABLE})
+    execute_process(COMMAND ${TRACK_PYTHON} -c "import numpy, PIL"
+        RESULT_VARIABLE track_tools_missing OUTPUT_QUIET ERROR_QUIET)
+    if(NOT track_tools_missing)
+        set(TRACK_TOOLS ON)
+    endif()
 endif()
 
 add_executable(RPMegaRacer)
@@ -24,19 +31,20 @@ rp6502_asset(RPMegaRacer DEMO.BIN music/DEMO.BIN)
 rp6502_asset(RPMegaRacer title_tiles.bin images/title_tiles.bin)
 rp6502_asset(RPMegaRacer title_map.bin images/title_map.bin)
 
-# Each track: the map and tiles as drawn, plus the walls, grass and racing
-# line that tools/make_track.py works out from them.
+# Each track: the map and tiles as drawn, plus its walls, grass and racing line.
 foreach(n 01 02 03)
     set(src ${CMAKE_CURRENT_SOURCE_DIR}/tracks/track${n})
-    set(out ${CMAKE_CURRENT_BINARY_DIR}/track${n})
-    add_custom_command(
-        OUTPUT ${out}/walls.bin ${out}/grass.bin ${out}/path.bin
-        COMMAND ${TRACK_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/tools/make_track.py ${src} ${out}
-        DEPENDS tools/make_track.py tools/trackdata.py
-            ${src}/map.bin ${src}/tiles.bin ${src}/collision.bin
-            ${src}/properties.bin ${src}/waypoints.json
-        VERBATIM
-    )
+    set(out ${src})
+    if(TRACK_TOOLS)
+        add_custom_command(
+            OUTPUT ${out}/walls.bin ${out}/grass.bin ${out}/path.bin
+            COMMAND ${TRACK_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/tools/make_track.py ${src} ${out}
+            DEPENDS tools/make_track.py tools/trackdata.py
+                ${src}/map.bin ${src}/tiles.bin ${src}/collision.bin
+                ${src}/properties.bin ${src}/waypoints.json
+            VERBATIM
+        )
+    endif()
     rp6502_asset(RPMegaRacer track${n}_map.bin ${src}/map.bin)
     rp6502_asset(RPMegaRacer track${n}_tiles.bin ${src}/tiles.bin)
     rp6502_asset(RPMegaRacer track${n}_walls.bin ${out}/walls.bin)

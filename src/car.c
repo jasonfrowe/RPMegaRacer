@@ -17,7 +17,8 @@ static int16_t decay(int16_t v, uint8_t sh)
     return v >= 0 ? v - (v >> sh) : v + ((-v) >> sh);
 }
 
-/* The car's outline against the walls: 8 points on a circle of radius 5 px.
+/* The car's outline against the walls: 8 points on a circle of radius 4 px,
+ * a little narrower than the car is long, so it can run close to a wall.
  * Called a lot, so it works in wall cells (2 px) and bytes. */
 static inline bool cell(const uint8_t *row, uint8_t cx)
 {
@@ -29,25 +30,52 @@ bool car_blocked(int16_t px, int16_t py)
     /* The edge of the world is wall; cars never get near it. */
     if ((uint16_t)(px - 6) >= WORLD_W - 12 || (uint16_t)(py - 6) >= WORLD_H - 12)
         return true;
-    uint8_t xm5 = (uint8_t)((uint16_t)(px - 5) >> 1);
     uint8_t xm4 = (uint8_t)((uint16_t)(px - 4) >> 1);
+    uint8_t xm3 = (uint8_t)((uint16_t)(px - 3) >> 1);
     uint8_t x0 = (uint8_t)((uint16_t)px >> 1);
+    uint8_t xp3 = (uint8_t)((uint16_t)(px + 3) >> 1);
     uint8_t xp4 = (uint8_t)((uint16_t)(px + 4) >> 1);
-    uint8_t xp5 = (uint8_t)((uint16_t)(px + 5) >> 1);
-    const uint8_t *r = walls[(uint16_t)(py - 5) >> 1];
+    const uint8_t *r = walls[(uint16_t)(py - 4) >> 1];
     if (cell(r, x0))
         return true;
-    r = walls[(uint16_t)(py - 4) >> 1];
-    if (cell(r, xm4) || cell(r, xp4))
+    r = walls[(uint16_t)(py - 3) >> 1];
+    if (cell(r, xm3) || cell(r, xp3))
         return true;
     r = walls[(uint16_t)py >> 1];
-    if (cell(r, xm5) || cell(r, xp5))
-        return true;
-    r = walls[(uint16_t)(py + 4) >> 1];
     if (cell(r, xm4) || cell(r, xp4))
         return true;
-    r = walls[(uint16_t)(py + 5) >> 1];
+    r = walls[(uint16_t)(py + 3) >> 1];
+    if (cell(r, xm3) || cell(r, xp3))
+        return true;
+    r = walls[(uint16_t)(py + 4) >> 1];
     return cell(r, x0);
+}
+
+/* Wall friction: the speed along a wall drops by a share of the speed into
+ * it, so a glancing touch costs little and a hard hit costs a lot. */
+static int16_t scrape(int16_t along, int16_t into)
+{
+    int16_t loss = (into < 0 ? -into : into) >> WALL_FRICTION_SHIFT;
+    if (along > loss)
+        return along - loss;
+    if (along < -loss)
+        return along + loss;
+    return 0;
+}
+
+/* On a glancing hit, turn the car a little to run along the wall, the way
+ * a driver would, instead of leaving it nosed into the wall. along is the
+ * heading parallel to the wall in the direction of travel. */
+static void align_to_wall(Car *c, uint8_t along, int16_t speed_along)
+{
+    if (speed_along > -64 && speed_along < 64)
+        return; /* head on: nothing to line up with */
+    int8_t d = (int8_t)(along - (uint8_t)(c->heading >> 8));
+    if (d > -WALL_ALIGN_RANGE && d < WALL_ALIGN_RANGE) {
+        if (d > WALL_ALIGN_STEP) d = WALL_ALIGN_STEP;
+        if (d < -WALL_ALIGN_STEP) d = -WALL_ALIGN_STEP;
+        c->heading += (int16_t)d << 8;
+    }
 }
 
 static const int8_t dir8_x[8] = {0, 1, 1, 1, 0, -1, -1, -1};
@@ -173,13 +201,17 @@ void car_update(Car *c)
         }
     }
     if (hit_x) {
+        /* A wall across x: up is heading 0, down 128. */
+        align_to_wall(c, vy >= 0 ? 128 : 0, vy);
+        vy = scrape(vy, vx);
         vx = -(int16_t)(((vx >> 2) * WALL_BOUNCE) >> 6);
-        vy = decay(vy, WALL_SCRAPE);
         c->wall_hit = 8;
     }
     if (hit_y) {
+        /* A wall across y: left is heading 64, right 192. */
+        align_to_wall(c, vx >= 0 ? 192 : 64, vx);
+        vx = scrape(vx, vy);
         vy = -(int16_t)(((vy >> 2) * WALL_BOUNCE) >> 6);
-        vx = decay(vx, WALL_SCRAPE);
         c->wall_hit = 8;
     }
 

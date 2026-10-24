@@ -2,7 +2,14 @@
 
 A high-performance, top-down arcade racing game for the [**RP6502 PicoComputer**](https://picocomputer.github.io/), heavily inspired by Atari's classic *Super Sprint* and the *Micro Machines* series.
 
-![Titlescreen of RP Mega Racer on RP6502](screenshots/MegaRacer_Title.png)
+<!-- rp6502
+preset: llvm-mos/Release
+publish: RPMegaRacer.zip
+frames: 120
+-->
+[![RP Mega Racer](https://jasonfrowe.github.io/RPMegaRacer/RPMegaRacer/screenshot.png)](https://jasonfrowe.github.io/RPMegaRacer/RPMegaRacer/)
+
+[Play it in your browser](https://jasonfrowe.github.io/RPMegaRacer/RPMegaRacer/). On each push to `main`, `.github/workflows/web.yml` builds the game and publishes this web player and its screenshot to GitHub Pages.
 
 
 ## About
@@ -53,7 +60,7 @@ The project uses the [RP6502 SDK](https://picocomputer.github.io/sdk.html) (from
 
 - llvm-mos for RP6502 (the SDK installs it in `~/.rp6502/llvm-mos`)
 - CMake 3.21+, and Make or Ninja
-- Python 3, with Pillow and NumPy for the track tools: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
+- Python 3. To change a track you also need Pillow and NumPy in the project's `.venv` (`python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`); with them, the build remakes each track's `walls.bin`, `grass.bin` and `path.bin`. Without them it uses the committed copies, which is what the GitHub build does.
 
 ### Build and Run
 
@@ -63,7 +70,7 @@ cmake --build --preset llvm-mos/Release
 ./tools/rp6502-emu build/llvm-mos/release/RPMegaRacer.rp6502
 ```
 
-This builds `RPMegaRacer.rp6502` (the game, with every asset inside it) and `gamepad_mapper.rp6502`. The first configure fetches the emulator into `tools/`. In VS Code, the RP6502-EMU, RP6502-PICO and RP6502-WEB launch entries run it in the emulator, on a Picocomputer, or in a browser. Update the SDK tools with `cmake -P tools/rp6502.cmake`.
+This builds `RPMegaRacer.rp6502` (the game, with every asset inside it), `gamepad_mapper.rp6502`, and the web player in `build/llvm-mos/release/web/`. The first configure fetches the emulator into `tools/`. In VS Code, the RP6502-EMU, RP6502-PICO and RP6502-WEB launch entries run it in the emulator, on a Picocomputer, or in a browser. Update the SDK tools with `cmake -P tools/rp6502.cmake`.
 
 ### Testing
 

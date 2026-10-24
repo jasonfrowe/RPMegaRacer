@@ -147,11 +147,13 @@ bool input_brake(void)
 
 int8_t input_steer(void)
 {
-    /* The left stick steers in proportion; anything else is full lock. */
+    /* The left stick steers in proportion, on a curve that's gentle near
+     * the middle; anything else is full lock. */
     gamepad_player_t *g = &pad[0];
     if ((g->dpad & GP_CONNECTED) && !(g->dpad & (GP_DPAD_LEFT | GP_DPAD_RIGHT)) &&
         (g->lx < -AXIS_DEADZONE || g->lx > AXIS_DEADZONE)) {
-        int16_t s = -(int16_t)g->lx / 6;
+        int16_t x = g->lx;
+        int16_t s = -(x * (x < 0 ? -x : x)) / 1000;
         if (s > 16) s = 16;
         if (s < -16) s = -16;
         return (int8_t)s;
