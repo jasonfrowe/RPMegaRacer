@@ -29,7 +29,8 @@ def rgb(c):
 
 def finish_tiles(track_id):
     if track_id == 3:
-        return {14, 15, 44, 45}
+        # 16 is the painted end of the line, against the top wall: not a wall.
+        return {14, 15, 16, 44, 45}
     return set(range(243, 249))
 
 

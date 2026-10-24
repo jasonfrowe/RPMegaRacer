@@ -27,8 +27,17 @@
 
 /* Of the speed into a wall, the share that bounces back, out of 256. */
 #define WALL_BOUNCE 48
-/* Sliding along a wall loses 1/2^WALL_FRICTION_SHIFT of the speed into it. */
+/* Sliding along a wall loses 1/2^WALL_FRICTION_SHIFT of the speed into it,
+ * over the first WALL_TOUCH, which is free. */
 #define WALL_FRICTION_SHIFT 2
+#define WALL_TOUCH 48
+/* A blocked step that a shift of up to WALL_STEP px clears is a bump in
+ * the wall, and the car rides over it. */
+#define WALL_STEP 3
+/* Walls within WALL_REPEL_R px of a car's centre push it away, by about
+ * 4 * WALL_REPEL per frame for a wall on one side. */
+#define WALL_REPEL_R 7
+#define WALL_REPEL 3
 /* A hit within this many angle units of running along the wall turns the
  * car up to WALL_ALIGN_STEP units toward it, each frame it touches. */
 #define WALL_ALIGN_RANGE 40

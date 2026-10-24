@@ -75,6 +75,7 @@ This builds `RPMegaRacer.rp6502` (the game, with every asset inside it), `gamepa
 ### Testing
 
 - `tools/simrace.sh <track> [drs]` races all four cars on autopilot in the headless emulator and prints each lap, each finish (with wall and car contacts, AI reversals and rescues), and any dropped frames. With `drs`, the player's car uses DRS.
+- `tools/wallskim.c` runs the car physics natively and drives along every wall of a track, leaning slightly into it, and reports how much speed the cars keep. Build and run it with `cc -O1 -Isrc -o build/wallskim tools/wallskim.c src/car.c src/trig.c && build/wallskim tracks/track01 4`.
 - `tools/playtest.py race --track N --out DIR` plays a race with screenshots. `tools/playtest.py my_script.txt` runs your own emulator script, with `{symbol}` filled in from the build.
 
 ## Technical Details

@@ -55,12 +55,24 @@ bool car_blocked(int16_t px, int16_t py)
  * it, so a glancing touch costs little and a hard hit costs a lot. */
 static int16_t scrape(int16_t along, int16_t into)
 {
-    int16_t loss = (into < 0 ? -into : into) >> WALL_FRICTION_SHIFT;
+    int16_t hard = (into < 0 ? -into : into) - WALL_TOUCH;
+    if (hard <= 0)
+        return along; /* a touch, not a hit */
+    int16_t loss = hard >> WALL_FRICTION_SHIFT;
     if (along > loss)
         return along - loss;
     if (along < -loss)
         return along + loss;
     return 0;
+}
+
+/* The speed into a wall after hitting it: a touch just stops, a hit
+ * bounces back a little. */
+static int16_t bounce(int16_t into)
+{
+    if (into > -WALL_TOUCH && into < WALL_TOUCH)
+        return 0;
+    return -(int16_t)(((into >> 2) * WALL_BOUNCE) >> 6);
 }
 
 /* On a glancing hit, turn the car a little to run along the wall, the way
@@ -76,6 +88,27 @@ static void align_to_wall(Car *c, uint8_t along, int16_t speed_along)
         if (d < -WALL_ALIGN_STEP) d = -WALL_ALIGN_STEP;
         c->heading += (int16_t)d << 8;
     }
+}
+
+/* Walls push a car away gently before it touches them, so a car running
+ * close beside a wall, where a pixel of wall can stick out, eases off it
+ * instead of catching. A ring of 8 points just outside the outline. */
+static void wall_repel(Car *c, int16_t *vx, int16_t *vy)
+{
+    int16_t px = PX(c->x);
+    int16_t py = PX(c->y);
+    int8_t rx = 0, ry = 0;
+    if (wall_at(px, py - WALL_REPEL_R)) ry += 4;
+    if (wall_at(px, py + WALL_REPEL_R)) ry -= 4;
+    if (wall_at(px - WALL_REPEL_R, py)) rx += 4;
+    if (wall_at(px + WALL_REPEL_R, py)) rx -= 4;
+    const int16_t d = WALL_REPEL_R * 3 / 4;
+    if (wall_at(px - d, py - d)) { rx += 3; ry += 3; }
+    if (wall_at(px + d, py - d)) { rx -= 3; ry += 3; }
+    if (wall_at(px - d, py + d)) { rx += 3; ry -= 3; }
+    if (wall_at(px + d, py + d)) { rx -= 3; ry -= 3; }
+    *vx += rx * WALL_REPEL;
+    *vy += ry * WALL_REPEL;
 }
 
 static const int8_t dir8_x[8] = {0, 1, 1, 1, 0, -1, -1, -1};
@@ -110,6 +143,29 @@ void car_place(Car *c, int16_t x, int16_t y, uint8_t heading)
     c->wall_hit = c->car_hit = 0;
     if (car_blocked(x, y))
         car_unstick(c);
+}
+
+/* A step along one axis to `to` hit the wall. If shifting the car up to
+ * WALL_STEP px across that axis clears it, it's only a bump: take the step
+ * and the shift. Tries the side the car is already drifting to first.
+ * along is the axis being moved (x if is_x), across the other one. */
+static bool step_round(int32_t *along, int32_t *across, int32_t to, bool is_x, int16_t v_across)
+{
+    int8_t first = v_across >= 0 ? 1 : -1;
+    for (int8_t k = 1; k <= WALL_STEP; k++) {
+        for (int8_t side = 0; side < 2; side++) {
+            int8_t s = side ? -first : first;
+            int32_t shifted = *across + ((int32_t)(s * k) << 8);
+            int16_t ax = PX(is_x ? to : shifted), ay = PX(is_x ? shifted : to);
+            int16_t bx = PX(is_x ? *along : shifted), by = PX(is_x ? shifted : *along);
+            if (!car_blocked(ax, ay) && !car_blocked(bx, by)) {
+                *along = to;
+                *across = shifted;
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 #define V_MAX 1000
@@ -176,8 +232,11 @@ void car_update(Car *c)
     if (vy > V_MAX) vy = V_MAX;
     if (vy < -V_MAX) vy = -V_MAX;
 
+    wall_repel(c, &vx, &vy);
+
     /* Move one axis at a time, at most 2 px (one wall cell) per step, so a
-     * car slides along a wall instead of sticking to it. */
+     * car slides along a wall instead of sticking to it. A step blocked by
+     * a little bump in the wall goes round it instead. */
     int16_t ax = vx < 0 ? -vx : vx;
     int16_t ay = vy < 0 ? -vy : vy;
     uint8_t steps = ((ax > ay ? ax : ay) > 512) ? 2 : 1;
@@ -187,31 +246,31 @@ void car_update(Car *c)
     for (uint8_t i = 0; i < steps; i++) {
         if (!hit_x && stx) {
             int32_t nx = c->x + stx;
-            if (car_blocked(PX(nx), PX(c->y)))
-                hit_x = true;
-            else
+            if (!car_blocked(PX(nx), PX(c->y)))
                 c->x = nx;
+            else if (!step_round(&c->x, &c->y, nx, true, vy))
+                hit_x = true;
         }
         if (!hit_y && sty) {
             int32_t ny = c->y + sty;
-            if (car_blocked(PX(c->x), PX(ny)))
-                hit_y = true;
-            else
+            if (!car_blocked(PX(c->x), PX(ny)))
                 c->y = ny;
+            else if (!step_round(&c->y, &c->x, ny, false, vx))
+                hit_y = true;
         }
     }
     if (hit_x) {
         /* A wall across x: up is heading 0, down 128. */
         align_to_wall(c, vy >= 0 ? 128 : 0, vy);
         vy = scrape(vy, vx);
-        vx = -(int16_t)(((vx >> 2) * WALL_BOUNCE) >> 6);
+        vx = bounce(vx);
         c->wall_hit = 8;
     }
     if (hit_y) {
         /* A wall across y: left is heading 64, right 192. */
         align_to_wall(c, vx >= 0 ? 192 : 64, vx);
         vx = scrape(vx, vy);
-        vy = -(int16_t)(((vy >> 2) * WALL_BOUNCE) >> 6);
+        vy = bounce(vy);
         c->wall_hit = 8;
     }
 
